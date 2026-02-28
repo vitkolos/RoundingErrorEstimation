@@ -1,0 +1,13 @@
+conv
+epoch [1,    11] loss: 0.112 vall acc: 96.560
+
+dense
+epoch [6,    11] loss: 0.090 vall acc: 97.180
+
+dense: 0-50
+max 0,00257 (data); 0,008493 (polytope)
+avg 0,00146 (data); 0,005528 (polytope)
+
+dense: 0-10000
+max 0,004387 (data)
+avg 0,001594 (data)
