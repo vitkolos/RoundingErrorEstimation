@@ -25,7 +25,10 @@ class MaxNetwork(torch.nn.Module):
         self.layer1.weight.data = torch.zeros(self.layer1.weight.data.shape).double()
         self.layer1.weight.data[0, x] = 1.0
         self.layer1.weight.data[0, y] = -1.0
-        self.layer1.weight.data[1, y] = 1.0
+        self.layer1.weight.data[1, y] = 1.0  # is this correct?
+        # max(x,y) = ReLU(x-y)+y
+        # but this would equal ReLU(x-y)+ReLU(y), right?
+        
         #print(self.layer1.bias.data.shape)
         #self.layer1.bias.data = torch.zeros(self.layer1.bias.data.shape).double()
 

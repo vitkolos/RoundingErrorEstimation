@@ -25,11 +25,12 @@ class SmallConvNet(nn.Module):
     def __init__(self):
         super().__init__()
         self.network = nn.Sequential(
-            nn.Conv2d(1, 32, kernel_size=3, padding=1),
+            # MNIST input: 1 x 28 x 28
+            nn.Conv2d(1, 32, kernel_size=3, padding=1), # output: 32 x 28 x 28
             nn.ReLU(),
-            nn.Conv2d(32, 64, kernel_size=3, stride=1, padding=1),
+            nn.Conv2d(32, 64, kernel_size=3, stride=1, padding=1), # output: 64 x 28 x 28
             nn.ReLU(),
-            nn.MaxPool2d(2, 2), # output: 64 x 16 x 16
+            nn.MaxPool2d(2, 2), # output: 64 x 14 x 14
 
             nn.Flatten(),
             nn.Dropout(0.8),
