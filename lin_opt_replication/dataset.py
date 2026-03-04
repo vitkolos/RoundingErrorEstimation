@@ -16,7 +16,7 @@ def create_dataset(train=True, batch_size=8):
 
 
     
-    dataset = torchvision.datasets.MNIST(root="./data", train=train,
+    dataset = torchvision.datasets.MNIST(root="datasets", train=train,
                                          download=True, transform=transform)
 
 #    print(len(dataset))

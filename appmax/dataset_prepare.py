@@ -11,8 +11,11 @@ class DataSplit:
 
 
 def get_mnist_split() -> DataSplit:
-    params = {"root": "./data", "download": True,
-              "transform": torchvision.transforms.ToTensor()}
+    transform = torchvision.transforms.Compose([
+        torchvision.transforms.ToTensor(),
+        torchvision.transforms.Normalize((0.1307,), (0.3081,))
+    ])
+    params = {"root": "datasets", "download": True, "transform": transform}
     train_dev = torchvision.datasets.MNIST(train=True, **params)
     train, dev = torch.utils.data.random_split(train_dev, [4/5, 1/5])
     test = torchvision.datasets.MNIST(train=False, **params)
