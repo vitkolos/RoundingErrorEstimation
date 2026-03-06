@@ -1,6 +1,6 @@
 import torch
-import dataset_prepare
 import network_train
+import applications.mnist
 
 def main():
     """
@@ -18,16 +18,17 @@ def main():
     output: reported errors (single sample × polytope; maximum × average)
     """
     device = torch.accelerator.current_accelerator().type if torch.accelerator.is_available() else "cpu"
-    model = network_train.SmallDenseNet().to(device)
-    data_split = dataset_prepare.get_mnist_split()
+    args = network_train.TrainingArgs(device, 64, 10)
+    model = applications.mnist.SmallDenseNet(args)
+    data_split = applications.mnist.MnistSplit()
     MODEL_FILE = "models/small_dense.pth"
     
     if False:
         model.fit(data_split.train, data_split.dev)
-        torch.save(model.state_dict(), MODEL_FILE)
+        model.save(MODEL_FILE)
     else:
-        model.load_state_dict(torch.load(MODEL_FILE, weights_only=True))
-        loader_dev = torch.utils.data.DataLoader(data_split.dev, batch_size=model.batch_size)
+        model.load(MODEL_FILE)
+        loader_dev = torch.utils.data.DataLoader(data_split.dev, batch_size=64)
         print(model.evaluate(loader_dev))
 
 
