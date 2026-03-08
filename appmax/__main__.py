@@ -17,9 +17,9 @@ def main():
     input: original network, approximated network, data samples
     output: reported errors (single sample × polytope; maximum × average)
     """
+    torch.manual_seed(42)
     device = torch.accelerator.current_accelerator().type if torch.accelerator.is_available() else "cpu"
-    args = network_train.TrainingArgs(device, 64, 10)
-    model = applications.mnist.SmallDenseNet(args)
+    model = applications.mnist.SmallDenseNet().to(device)
     data_split = applications.mnist.MnistSplit()
     MODEL_FILE = "models/small_dense.pth"
     
@@ -31,6 +31,13 @@ def main():
         loader_dev = torch.utils.data.DataLoader(data_split.dev, batch_size=64)
         print(model.evaluate(loader_dev))
 
+        model_approx = applications.mnist.SmallDenseNet().to(device)
+        model_approx.load(MODEL_FILE)
+        model_approx.round(bits=16)
+        print(model_approx.evaluate(loader_dev))
+
+        max_err, avg_err = network_train.TrainableModel.compute_error(model, model_approx, loader_dev)
+        print(max_err, avg_err)
 
 
 if __name__ == '__main__':

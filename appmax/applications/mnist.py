@@ -1,12 +1,12 @@
 import torch
 import torchvision
 import torchmetrics
-from network_train import TrainingArgs, TrainableModel, nn
+from network_train import TrainableModel, nn
 from dataset_prepare import DataSplit
 
 
 class SmallDenseNet(TrainableModel):
-    def __init__(self, args: TrainingArgs):
+    def __init__(self):
         super().__init__()
         self.network = nn.Sequential(
             nn.Flatten(),
@@ -19,7 +19,6 @@ class SmallDenseNet(TrainableModel):
             nn.Linear(256, 10)
         )
         self.configure(
-            args=args,
             loss_fn=torch.nn.CrossEntropyLoss(),
             optimizer=torch.optim.Adam(self.parameters(), lr=0.001),
             metric_fn=torchmetrics.Accuracy('multiclass', num_classes=10),
