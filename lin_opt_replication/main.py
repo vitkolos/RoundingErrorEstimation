@@ -73,23 +73,26 @@ def main(start, end, bits, outputdir):
     print(compnet)
 
     data = create_dataset(train=False, batch_size=BATCH_SIZE)
+    POINTS_ONLY = False
 
     i = 0    
     for i, (inputs, labels) in enumerate(data):
-        print(i)
         if i < start or i >= end:
             continue
+        print(i)
         inputs = inputs.double()
 
         out1 = net(inputs)
         out2 = net2(inputs)
         real_error = (out2 - out1).abs().sum().item()
         computed_error = compnet(inputs).item()
-        
-        with open(f"{outputdir}/results_{start}_{end}.csv", "a") as f:
-            print(f"{real_error:.6f},{computed_error:.6f}", file=f)
-        i += 1
-        continue
+
+        if POINTS_ONLY:
+            with open(f"{outputdir}/results_{start}_{end}.csv", "a") as f:
+                print(f"{real_error:.6f},{computed_error:.6f}", file=f)
+            i += 1
+            continue
+
         # min c @ x
         c = -1*create_c(compnet, inputs)
 

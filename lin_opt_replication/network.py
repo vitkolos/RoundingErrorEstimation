@@ -114,7 +114,7 @@ class SimpleNet(nn.Module):
 
 def load_network(network_class, network_path):
     net = network_class()
-    net.load_state_dict(torch.load(network_path))
+    net.load_state_dict(torch.load(network_path, map_location='cpu'))
     net.eval()
     # net.cuda()
     net.double()
