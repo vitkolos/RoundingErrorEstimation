@@ -1,5 +1,3 @@
-from dataclasses import dataclass
-
 import tqdm
 import torch
 from torch import nn
@@ -9,8 +7,12 @@ import quant_utils
 
 
 class TrainableModel(nn.Module):
-    def __init__(self):
+    def __init__(self, network: nn.Sequential):
         super().__init__()
+        self.network = network
+
+    def forward(self, x):
+        return self.network(x)
 
     @property
     def device(self) -> torch.device:
@@ -86,7 +88,21 @@ class TrainableModel(nn.Module):
         loss = loss_sum / len(loader)
         metric = self.metric_fn.compute().item()
         return loss, metric
-    
+
+    def save(self, path):
+        data = self.state_dict()
+        torch.save(data, path)
+
+    def load(self, path):
+        data = torch.load(path, weights_only=True, map_location=self.device)
+        self.load_state_dict(data)
+        return self
+
+    def round(self, bits=16):
+        """modifies the network in-place (converts the network to its approximation)"""
+        quant_utils.lower_precision(self, bits)
+        return self
+
     @torch.no_grad
     def compute_error(self, other: nn.Module, loader: torch.utils.data.DataLoader) -> tuple[float, float]:
         device = self.device
@@ -108,18 +124,47 @@ class TrainableModel(nn.Module):
         avg_err = total_err / num_samples
         return max_err, avg_err
 
+    @torch.no_grad
+    def create_evaluation_network(self, other: 'TrainableModel'):
+        layers_self = list(self.network)
+        layers_other = list(other.network)
+        seq_self = nn.Sequential(*layers_self[:-1])
+        seq_other = nn.Sequential(*layers_other[:-1])
+        last_self = layers_self[-1]
+        last_other = layers_other[-1]
 
-    def save(self, path):
-        data = self.state_dict()
-        torch.save(data, path)
+        if not (isinstance(last_self, nn.Linear) and isinstance(last_other, nn.Linear)):
+            raise Exception('last layers are not linear')
 
-    def load(self, path):
-        data = torch.load(path, weights_only=True, map_location=self.device)
-        self.load_state_dict(data)
-        return self
+        in_features = last_self.in_features + last_other.in_features
+        out_features = last_self.out_features + last_other.out_features
+        seq_both = nn.Sequential(
+            magic_layer := nn.Linear(in_features, out_features),
+            nn.ReLU(),
+            output_layer := nn.Linear(out_features, 1, bias=False)
+        )
 
-    def round(self, bits=16):
-        """modifies the network in-place (converts the network to its approximation)"""
-        quant_utils.lower_precision(self, bits)
-        return self
-    
+        W1, b1 = last_self.weight, last_self.bias
+        W2, b2 = last_other.weight, last_other.bias
+        # magic W  =  W1 -W2
+        #            -W1  W2
+        magic_W = torch.vstack((
+            torch.hstack((W1, -W2)),
+            torch.hstack((-W1, W2))
+        ))
+        magic_layer.weight.copy_(magic_W)
+        # magic_b1 = b1 - b2
+        # mabic_b2 = b2 - b1
+        magic_layer.bias.copy_(torch.cat((b1-b2, b2-b1)))
+
+        nn.init.ones_(output_layer.weight)
+
+        class EvaluationNetwork(nn.Module):
+            def __init__(self):
+                super().__init__()
+
+            def forward(self, x):
+                x = torch.cat((seq_self(x), seq_other(x)), dim=1)
+                return seq_both(x)
+
+        return EvaluationNetwork()

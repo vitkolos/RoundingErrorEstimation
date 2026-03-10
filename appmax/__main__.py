@@ -1,5 +1,4 @@
 import torch
-import network_train
 import applications.mnist
 
 def main():
@@ -29,14 +28,22 @@ def main():
     else:
         model.load(MODEL_FILE)
         loader_dev = torch.utils.data.DataLoader(data_split.dev, batch_size=64)
-        print(model.evaluate(loader_dev))
+        # print(model.evaluate(loader_dev))
 
         model_approx = applications.mnist.SmallDenseNet().to(device)
         model_approx.load(MODEL_FILE)
         model_approx.round(bits=8)
 
-        max_err, avg_err = network_train.TrainableModel.compute_error(model, model_approx, loader_dev)
+        max_err, avg_err = model.compute_error(model_approx, loader_dev)
         print(max_err, avg_err)
+
+        X, y = data_split.dev[0]
+        pred1 = model(X)
+        pred2 = model_approx(X)
+        eval_net = model.create_evaluation_network(model_approx)
+        print((pred1 - pred2).abs().sum(), eval_net(X))
+        
+
 
 
 if __name__ == '__main__':

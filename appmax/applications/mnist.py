@@ -7,25 +7,23 @@ from dataset_prepare import DataSplit
 
 class SmallDenseNet(TrainableModel):
     def __init__(self):
-        super().__init__()
-        self.network = nn.Sequential(
-            nn.Flatten(),
-            nn.Linear(28*28, 512),
-            nn.ReLU(),
-            nn.Dropout(0.2),
-            nn.Linear(512, 256),
-            nn.ReLU(),
-            nn.Dropout(0.2),
-            nn.Linear(256, 10)
+        super().__init__(
+            nn.Sequential(
+                nn.Flatten(),
+                nn.Linear(28*28, 512),
+                nn.ReLU(),
+                nn.Dropout(0.2),
+                nn.Linear(512, 256),
+                nn.ReLU(),
+                nn.Dropout(0.2),
+                nn.Linear(256, 10)
+            )
         )
         self.configure(
             loss_fn=torch.nn.CrossEntropyLoss(),
             optimizer=torch.optim.Adam(self.parameters(), lr=0.001),
             metric_fn=torchmetrics.Accuracy('multiclass', num_classes=10),
         )
-
-    def forward(self, x):
-        return self.network(x)
 
     def callback_stopping(self, epoch, metric_dev):
         return metric_dev > 0.9
