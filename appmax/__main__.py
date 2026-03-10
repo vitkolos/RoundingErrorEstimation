@@ -1,7 +1,6 @@
 import torch
 import network_train
 import applications.mnist
-import quant_utils
 
 def main():
     """
@@ -30,25 +29,14 @@ def main():
     else:
         model.load(MODEL_FILE)
         loader_dev = torch.utils.data.DataLoader(data_split.dev, batch_size=64)
-        # print(model.evaluate(loader_dev))
-
-        model_approx_legacy = applications.mnist.SmallDenseNet().to(device)
-        model_approx_legacy.load(MODEL_FILE)
-        quant_utils.lower_precision_legacy(model_approx_legacy, bits=8)
+        print(model.evaluate(loader_dev))
 
         model_approx = applications.mnist.SmallDenseNet().to(device)
         model_approx.load(MODEL_FILE)
         model_approx.round(bits=8)
 
-        for p0, p1, p2 in zip(model.parameters(), model_approx.parameters(), model_approx_legacy.parameters()):
-            if not torch.equal(p1, p2):
-                print("not equal", p1, p2)
-                # indices = (p1.flatten() != p2.flatten()).nonzero().flatten()
-                # for index in indices:
-                #     print(p0.flatten()[index], p1.flatten()[index], p2.flatten()[index])
-
-        # max_err, avg_err = network_train.TrainableModel.compute_error(model, model_approx, loader_dev)
-        # print(max_err, avg_err)
+        max_err, avg_err = network_train.TrainableModel.compute_error(model, model_approx, loader_dev)
+        print(max_err, avg_err)
 
 
 if __name__ == '__main__':
