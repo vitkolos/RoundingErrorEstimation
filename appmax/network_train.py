@@ -7,12 +7,12 @@ import quant_utils
 
 
 class TrainableModel(nn.Module):
-    def __init__(self, network: nn.Sequential):
+    def __init__(self, layers: nn.Sequential):
         super().__init__()
-        self.network = network
+        self.layers = layers
 
     def forward(self, x):
-        return self.network(x)
+        return self.layers(x)
 
     @property
     def device(self) -> torch.device:
@@ -44,48 +44,44 @@ class TrainableModel(nn.Module):
             data_dev, batch_size=batch_size)
 
         for epoch in range(1, epochs+1):
-            self.train_step(loader_train)
-            print(f"epoch {epoch} done", end=" ", flush=True)
-            loss_train, metric_train = self.evaluate(loader_train)
-            print(
-                f"| train: loss {loss_train:.2f}, metric {metric_train:.2f}", end=" ", flush=True)
+            loss_train, metric_train = self.train_epoch(loader_train)
             loss_dev, metric_dev = self.evaluate(loader_dev)
-            print(f"| dev: loss {loss_dev:.2f}, metric {metric_dev:.2f}")
-
+            print(f"epoch {epoch} done | train: loss {loss_train:.2f}, metric {metric_train:.2f}",
+                  f"| dev: loss {loss_dev:.2f}, metric {metric_dev:.2f}")
             is_stopping = self.callback_stopping(epoch, metric_dev)
 
             if is_stopping:
                 print("stopping")
                 return
 
-    def train_step(self, loader_train: torch.utils.data.DataLoader):
-        device = self.device
+    def train_epoch(self, loader: torch.utils.data.DataLoader) -> tuple[float, float]:
         self.train()
+        return self._execute_epoch(loader, train=True)
 
-        for X, y in tqdm.tqdm(loader_train):
-            X, y = X.to(device), y.to(device)
-            pred = self(X)
-            loss = self.loss_fn(pred, y)
-
-            loss.backward()
-            self.optimizer.step()
-            self.optimizer.zero_grad()
-
-    @torch.no_grad
     def evaluate(self, loader: torch.utils.data.DataLoader) -> tuple[float, float]:
+        with torch.no_grad():
+            self.eval()
+            return self._execute_epoch(loader, train=False)
+
+    def _execute_epoch(self, loader: torch.utils.data.DataLoader, train: bool) -> tuple[float, float]:
         device = self.device
-        self.eval()
-        loss_sum = 0.0
+        loss_sum = torch.tensor(0.0, device=device)
         self.metric_fn = self.metric_fn.to(device)
         self.metric_fn.reset()
 
-        for X, y in loader:
+        for X, y in tqdm.tqdm(loader, leave=False):
             X, y = X.to(device), y.to(device)
             pred = self(X)
-            loss_sum += self.loss_fn(pred, y).item()
+            loss = self.loss_fn(pred, y)
+            loss_sum += loss
             self.metric_fn.update(pred, y)
 
-        loss = loss_sum / len(loader)
+            if train:
+                loss.backward()
+                self.optimizer.step()
+                self.optimizer.zero_grad()
+
+        loss = loss_sum.item() / len(loader)
         metric = self.metric_fn.compute().item()
         return loss, metric
 
@@ -126,8 +122,8 @@ class TrainableModel(nn.Module):
 
     @torch.no_grad
     def create_evaluation_network(self, other: 'TrainableModel'):
-        layers_self = list(self.network)
-        layers_other = list(other.network)
+        layers_self = list(self.layers)
+        layers_other = list(other.layers)
         seq_self = nn.Sequential(*layers_self[:-1])
         seq_other = nn.Sequential(*layers_other[:-1])
         last_self = layers_self[-1]

@@ -28,7 +28,7 @@ def main():
     else:
         model.load(MODEL_FILE)
         loader_dev = torch.utils.data.DataLoader(data_split.dev, batch_size=64)
-        # print(model.evaluate(loader_dev))
+        print(model.evaluate(loader_dev))
 
         model_approx = applications.mnist.SmallDenseNet().to(device)
         model_approx.load(MODEL_FILE)
