@@ -45,7 +45,7 @@ def main():
         model.eval()
         constraints = appmax.neurons.Constraints()
         message = appmax.neurons.Message(X)
-        message = appmax.neurons.forward(model, message, constraints)
+        message = appmax.neurons.collect(model, message, constraints)
         output = X.flatten() @ message.s_weight + message.s_bias
 
 

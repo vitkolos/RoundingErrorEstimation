@@ -32,28 +32,29 @@ class Constraints:
 
 
 @torch.no_grad()
-def forward(module: nn.Module, message: Message, constraints: Constraints) -> Message:
+def collect(module: nn.Module, message: Message, constraints: Constraints) -> Message:
+    """passes message through the module and collects necessary information"""
     match module:
         case appmax.trainable.TrainableModel():
-            return forward(module.layers, message, constraints)
+            return collect(module.layers, message, constraints)
         case nn.Sequential():
             for submodule in module:
-                message = forward(submodule, message, constraints)
+                message = collect(submodule, message, constraints)
             return message
         case nn.ReLU():
-            return forward_relu(module, message, constraints)
+            return collect_relu(module, message, constraints)
         case nn.Linear():
-            return forward_linear(module, message, constraints)
+            return collect_linear(module, message, constraints)
         case nn.Dropout():
             return message
         case nn.Flatten():
             return message.apply(module)
         case _:
             raise NotImplementedError(
-                f'{type(module)} forward not implemented')
+                f'{type(module)} neurons.collect not implemented')
 
 
-def forward_relu(relu: nn.ReLU, message: Message, constraints: Constraints):
+def collect_relu(relu: nn.ReLU, message: Message, constraints: Constraints):
     message.sample = relu(message.sample)
     unsaturated = message.sample > 0
     unsaturated_sq = unsaturated.squeeze()
@@ -68,7 +69,7 @@ def forward_relu(relu: nn.ReLU, message: Message, constraints: Constraints):
     return message
 
 
-def forward_linear(linear: nn.Linear, message: Message, constraints: Constraints):
+def collect_linear(linear: nn.Linear, message: Message, constraints: Constraints):
     message.sample = linear(message.sample)
     message.s_weight = message.s_weight @ linear.weight.t()
     message.s_bias = message.s_bias @ linear.weight.t() + linear.bias
