@@ -39,14 +39,20 @@ def main():
         # max_err, avg_err = model.compute_error(model_approx, loader_dev)
         # print(max_err, avg_err)
 
-        X, y = data_split.dev[0]
-        # eval_net = model.create_evaluation_network(model_approx)
-        # print((pred1 - pred2).abs().sum(), eval_net(X))
         model.eval()
+        model_approx.eval()
+        X, y = data_split.dev[0]
+        pred1, pred2 = model(X), model_approx(X)
+
+        eval_net = model.create_evaluation_network(model_approx)
+        eval_net.eval()
         constraints = appmax.neurons.Constraints()
         message = appmax.neurons.Message(X)
-        message = appmax.neurons.collect(model, message, constraints)
+        message = appmax.neurons.collect(eval_net, message, constraints)
         output = X.flatten() @ message.s_weight + message.s_bias
+        
+        print((pred1 - pred2).abs().sum(), eval_net(X))
+        print(output)
 
 
 if __name__ == '__main__':
