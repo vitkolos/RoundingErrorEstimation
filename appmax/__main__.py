@@ -1,6 +1,7 @@
 import torch
 from appmax.applications import mnist
 import appmax.neurons
+import appmax.optimize
 
 
 def main():
@@ -28,31 +29,30 @@ def main():
         model.fit(data_split.train, data_split.dev)
         model.save(MODEL_FILE)
     else:
-        model.load(MODEL_FILE)
-        loader_dev = torch.utils.data.DataLoader(data_split.dev, batch_size=64)
+        model.load(MODEL_FILE).eval()
+        # loader_dev = torch.utils.data.DataLoader(data_split.dev, batch_size=64)
         # print(model.evaluate(loader_dev))
 
-        model_approx = mnist.SmallDenseNet().to(device)
+        model_approx = mnist.SmallDenseNet().to(device).eval()
         model_approx.load(MODEL_FILE)
         model_approx.round(bits=8)
 
         # max_err, avg_err = model.compute_error(model_approx, loader_dev)
         # print(max_err, avg_err)
 
-        model.eval()
-        model_approx.eval()
-        X, y = data_split.dev[0]
-        pred1, pred2 = model(X), model_approx(X)
+        X, y = data_split.dev[5]
+        # pred1, pred2 = model(X), model_approx(X)
 
-        eval_net = model.create_evaluation_network(model_approx)
-        eval_net.eval()
+        eval_net = model.create_evaluation_network(model_approx).to(device).eval()
         constraints = appmax.neurons.Constraints()
         message = appmax.neurons.Message(X)
         message = appmax.neurons.collect(eval_net, message, constraints)
-        output = X.flatten() @ message.s_weight + message.s_bias
+        # output = X.flatten() @ message.s_weight + message.s_bias
+
+        # print((pred1 - pred2).abs().sum(), eval_net(X))
+        # print(output)
         
-        print((pred1 - pred2).abs().sum(), eval_net(X))
-        print(output)
+        appmax.optimize.optimize(message, constraints, bounds=(-0.5, 3.0))
 
 
 if __name__ == '__main__':
