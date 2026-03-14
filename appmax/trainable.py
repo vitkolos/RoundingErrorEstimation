@@ -6,7 +6,21 @@ import appmax.dataset
 import appmax.quantization
 
 
+class DualStreamModel(nn.Module):
+    def __init__(self, first_stream: nn.Module, second_stream: nn.Module, common_stream: nn.Module):
+        super().__init__()
+        self.first_stream = first_stream
+        self.second_stream = second_stream
+        self.common_stream = common_stream
+
+    def forward(self, x):
+        x = torch.cat((self.first_stream(x), self.second_stream(x)), dim=1)
+        return self.common_stream(x)
+
+
 class TrainableModel(nn.Module):
+    """trainable single-stream model"""
+
     def __init__(self, layers: nn.Sequential):
         super().__init__()
         self.layers = layers
@@ -118,7 +132,7 @@ class TrainableModel(nn.Module):
         return max_err, avg_err
 
     @torch.no_grad()
-    def create_evaluation_network(self, other: 'TrainableModel'):
+    def create_evaluation_network(self, other: 'TrainableModel') -> DualStreamModel:
         layers_self = list(self.layers)
         layers_other = list(other.layers)
         seq_self = nn.Sequential(*layers_self[:-1])
@@ -151,13 +165,4 @@ class TrainableModel(nn.Module):
         magic_layer.bias.copy_(torch.cat((b1-b2, b2-b1)))
 
         nn.init.ones_(output_layer.weight)
-
-        class EvaluationNetwork(nn.Module):
-            def __init__(self):
-                super().__init__()
-
-            def forward(self, x):
-                x = torch.cat((seq_self(x), seq_other(x)), dim=1)
-                return seq_both(x)
-
-        return EvaluationNetwork()
+        return DualStreamModel(seq_self, seq_other, seq_both)

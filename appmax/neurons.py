@@ -1,15 +1,13 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import torch
 from torch import nn
 import appmax.trainable
-
-Constraints = list
 
 
 @dataclass
 class Message:
     sample: torch.Tensor
-    s_weights: torch.Tensor
+    s_weight: torch.Tensor
     s_bias: torch.Tensor
 
     # def apply(self, module: nn.Module, completely: bool = False):
@@ -17,9 +15,16 @@ class Message:
     #     return self
 
 
+@dataclass
+class Constraints:
+    U_weight: list[torch.Tensor] = field(default_factory=list)
+    U_bias: list[torch.Tensor] = field(default_factory=list)
+    S_weight: list[torch.Tensor] = field(default_factory=list)
+    S_bias: list[torch.Tensor] = field(default_factory=list)
+
+
 @torch.no_grad()
-def forward(module: nn.Module, message: Message, constraints: Constraints):
-    """returns a Message (sample, saturations, shortcut weights)"""
+def forward(module: nn.Module, message: Message, constraints: Constraints) -> Message:
     print(message)
     match module:
         case appmax.trainable.TrainableModel():
@@ -44,14 +49,20 @@ def forward(module: nn.Module, message: Message, constraints: Constraints):
 def forward_relu(relu: nn.ReLU, message: Message, constraints: Constraints):
     message.sample = relu(message.sample)
     unsaturated = message.sample > 0
-    # TODO: add constraints
-    message.s_weights *= unsaturated
+    unsaturated_sq = unsaturated.squeeze()
+    # add constraints
+    constraints.U_weight.append(message.s_weight.t()[unsaturated_sq])
+    constraints.U_bias.append(message.s_bias[unsaturated])
+    constraints.S_weight.append(message.s_weight.t()[~unsaturated_sq])
+    constraints.S_bias.append(message.s_bias[~unsaturated])
+    # disable saturated neurons
+    message.s_weight *= unsaturated
     message.s_bias *= unsaturated
     return message
 
 
 def forward_linear(linear: nn.Linear, message: Message, constraints: Constraints):
     message.sample = linear(message.sample)
-    message.s_weights = message.s_weights @ linear.weight.t()
+    message.s_weight = message.s_weight @ linear.weight.t()
     message.s_bias = message.s_bias @ linear.weight.t() + linear.bias
     return message
