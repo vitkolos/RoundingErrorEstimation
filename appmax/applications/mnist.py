@@ -29,6 +29,24 @@ class SmallDenseNet(TrainableModel):
         return metric_dev > 0.9
 
 
+class SmallDenseNet_original(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.network = nn.Sequential(
+            nn.Flatten(),
+            nn.Linear(28*28, 2000),
+            nn.ReLU(),
+            nn.Dropout(0.8),
+            nn.Linear(2000, 1000),
+            nn.ReLU(),
+            nn.Dropout(0.5),
+            nn.Linear(1000, 10)
+        )
+
+    def forward(self, x):
+        return self.network(x)
+
+
 class MnistSplit(DataSplit):
     def __init__(self,):
         transform = torchvision.transforms.Compose([

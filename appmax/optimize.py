@@ -1,10 +1,23 @@
 import torch
 import scipy.optimize
 import appmax.neurons
+import appmax.trainable
 
 
-def optimize(message: appmax.neurons.Message, constraints: appmax.neurons.Constraints, bounds: tuple):
+def find_appmax(eval_net: appmax.trainable.DualStreamModel, sample: torch.Tensor) -> float:
+    constraints = appmax.neurons.Constraints()
+    message = appmax.neurons.Message(sample)
+    message = appmax.neurons.collect(eval_net, message, constraints)
+    sample_found, err_found = optimize(message, constraints, bounds=(-0.5, 3.0))
+    # sample_found can be reshaped as sample
+    return err_found
+
+
+def optimize(message: appmax.neurons.Message, constraints: appmax.neurons.Constraints, bounds: tuple) -> tuple[torch.Tensor, float]:
     TOL = 0  # 1e-8
+
+    # objective to minimize
+    objective = -message.s_weight
 
     # (U)  Ax + b >= 0
     #         -Ax <= b
@@ -16,9 +29,11 @@ def optimize(message: appmax.neurons.Message, constraints: appmax.neurons.Constr
     S_weight = torch.cat(constraints.S_weight)
     S_bias = -torch.cat(constraints.S_bias) + TOL
 
-    c = message.s_weight.squeeze().cpu().numpy()
+    c = objective.squeeze().cpu().numpy()
     A_ub = torch.cat((U_weight, S_weight)).cpu().numpy()
     b_ub = torch.cat((U_bias, S_bias)).cpu().numpy()
-    print('starting optimization')
     result = scipy.optimize.linprog(c, A_ub, b_ub, bounds=bounds, options={"disp": True})
-    print(result)
+
+    # TODO: somehow process result.status or result.success?
+    x = torch.from_numpy(result.x).to(dtype=torch.get_default_dtype())
+    return x, -result.fun
