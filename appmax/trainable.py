@@ -2,8 +2,8 @@ import tqdm
 import torch
 from torch import nn
 import torchmetrics
-import dataset_prepare
-import quant_utils
+import appmax.dataset
+import appmax.quantization
 
 
 class TrainableModel(nn.Module):
@@ -25,7 +25,7 @@ class TrainableModel(nn.Module):
         self,
         loss_fn,
         optimizer,
-        metric_fn: torchmetrics.Metric = None,
+        metric_fn: torchmetrics.Metric,
     ):
         self.loss_fn = loss_fn
         self.optimizer = optimizer
@@ -33,15 +33,13 @@ class TrainableModel(nn.Module):
 
     def fit(
         self,
-        data_train: dataset_prepare.Dataset,
-        data_dev: dataset_prepare.Dataset | None = None,
+        data_train: appmax.dataset.Dataset,
+        data_dev: appmax.dataset.Dataset,
         batch_size: int = 64,
         epochs: int = 20,
     ):
-        loader_train = torch.utils.data.DataLoader(
-            data_train, batch_size=batch_size)
-        loader_dev = torch.utils.data.DataLoader(
-            data_dev, batch_size=batch_size)
+        loader_train = torch.utils.data.DataLoader(data_train, batch_size=batch_size)
+        loader_dev = torch.utils.data.DataLoader(data_dev, batch_size=batch_size)
 
         for epoch in range(1, epochs+1):
             loss_train, metric_train = self.train_epoch(loader_train)
@@ -96,10 +94,9 @@ class TrainableModel(nn.Module):
 
     def round(self, bits=16):
         """modifies the network in-place (converts the network to its approximation)"""
-        quant_utils.lower_precision(self, bits)
-        return self
+        return appmax.quantization.lower_precision(self, bits)
 
-    @torch.no_grad
+    @torch.no_grad()
     def compute_error(self, other: nn.Module, loader: torch.utils.data.DataLoader) -> tuple[float, float]:
         device = self.device
         other = other.to(device)
@@ -120,7 +117,7 @@ class TrainableModel(nn.Module):
         avg_err = total_err / num_samples
         return max_err, avg_err
 
-    @torch.no_grad
+    @torch.no_grad()
     def create_evaluation_network(self, other: 'TrainableModel'):
         layers_self = list(self.layers)
         layers_other = list(other.layers)

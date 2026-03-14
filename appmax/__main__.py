@@ -1,5 +1,5 @@
 import torch
-import applications.mnist
+from appmax.applications import mnist
 
 def main():
     """
@@ -18,8 +18,8 @@ def main():
     """
     torch.manual_seed(42)
     device = torch.accelerator.current_accelerator().type if torch.accelerator.is_available() else "cpu"
-    model = applications.mnist.SmallDenseNet().to(device)
-    data_split = applications.mnist.MnistSplit()
+    model = mnist.SmallDenseNet().to(device)
+    data_split = mnist.MnistSplit()
     MODEL_FILE = "models/small_dense.pth"
     
     if False:
@@ -30,7 +30,7 @@ def main():
         loader_dev = torch.utils.data.DataLoader(data_split.dev, batch_size=64)
         print(model.evaluate(loader_dev))
 
-        model_approx = applications.mnist.SmallDenseNet().to(device)
+        model_approx = mnist.SmallDenseNet().to(device)
         model_approx.load(MODEL_FILE)
         model_approx.round(bits=8)
 

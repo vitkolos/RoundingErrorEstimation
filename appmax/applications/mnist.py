@@ -1,8 +1,8 @@
 import torch
 import torchvision
 import torchmetrics
-from network_train import TrainableModel, nn
-from dataset_prepare import DataSplit
+from appmax.trainable import TrainableModel, nn
+from appmax.dataset import DataSplit
 
 
 class SmallDenseNet(TrainableModel):

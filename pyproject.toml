@@ -12,3 +12,10 @@ dependencies = [
     "torchvision>=0.25.0",
     "tqdm>=4.67.3",
 ]
+
+[dependency-groups]
+dev = [
+    "mypy>=1.19.1",
+    "pytest>=9.0.2",
+    "types-tqdm>=4.67.3.20260303",
+]

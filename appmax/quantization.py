@@ -33,7 +33,7 @@ class Quantization():
         # convert back to float64
         return self.scale * (q_number - self.zero_point)
 
-    @torch.no_grad
+    @torch.no_grad()
     def convert(self, network: torch.nn.Module):
         for p in network.parameters():
             p.copy_(self.quant_round(p))

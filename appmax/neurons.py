@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 import torch
 from torch import nn
-import network_train
+import appmax.trainable
 
 Constraints = list
 
@@ -17,12 +17,12 @@ class Message:
     #     return self
 
 
-@torch.no_grad
+@torch.no_grad()
 def forward(module: nn.Module, message: Message, constraints: Constraints):
     """returns a Message (sample, saturations, shortcut weights)"""
     print(message)
     match module:
-        case network_train.TrainableModel():
+        case appmax.trainable.TrainableModel():
             return forward(module.layers, message, constraints)
         case nn.Sequential():
             for submodule in module:
