@@ -28,18 +28,13 @@ class SimpleNet(appmax.trainable.TrainableModel):
             fc2.bias = nn.Parameter(torch.zeros(2))
 
 
-def test_shortcut_weights():
+def test_shortcut_weights_constraints():
     net = SimpleNet()
-    input_data = torch.tensor([[2.0, 1.0]])
-    message = appmax.neurons.Message(input_data, torch.eye(input_data.shape[1]), torch.zeros_like(input_data))
-    message = appmax.neurons.forward(net, message, [])
-    output = input_data @ message.s_weights + message.s_bias
-    assert torch.equal(output, net(input_data))
-
-net = SimpleNet()
-input_data = torch.tensor([[2.0, 1.0]])
-constraints = appmax.neurons.Constraints()
-message = appmax.neurons.Message(input_data, torch.eye(input_data.shape[1]), torch.zeros_like(input_data))
-message = appmax.neurons.forward(net, message, constraints)
-output = input_data @ message.s_weight + message.s_bias
-print(output, constraints)
+    sample = torch.tensor([[2.0, 1.0]])
+    constraints = appmax.neurons.Constraints()
+    message = appmax.neurons.Message(sample)
+    message = appmax.neurons.forward(net, message, constraints)
+    output = sample @ message.s_weight + message.s_bias
+    assert torch.equal(output, net(sample))
+    assert torch.equal(output, message.sample)
+    assert torch.equal(constraints.S_weight[0], torch.tensor([[-1., -1.]]))

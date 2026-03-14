@@ -10,9 +10,17 @@ class Message:
     s_weight: torch.Tensor
     s_bias: torch.Tensor
 
-    # def apply(self, module: nn.Module, completely: bool = False):
-    #     self.sample = module(self.sample)
-    #     return self
+    def __init__(self, sample: torch.Tensor):
+        self.sample = sample if sample.shape[0] == 1 else sample.unsqueeze(0)
+        # create a unit matrix with a shape corresponding to the input
+        self.s_weight = torch.eye(self.sample.shape.numel()).reshape((-1,*self.sample.shape[1:]))
+        self.s_bias = torch.zeros_like(self.sample)
+
+    def apply(self, module: nn.Module):
+        self.sample = module(self.sample)
+        self.s_weight = module(self.s_weight)
+        self.s_bias = module(self.s_bias)
+        return self
 
 
 @dataclass
@@ -25,7 +33,6 @@ class Constraints:
 
 @torch.no_grad()
 def forward(module: nn.Module, message: Message, constraints: Constraints) -> Message:
-    print(message)
     match module:
         case appmax.trainable.TrainableModel():
             return forward(module.layers, message, constraints)
@@ -33,14 +40,14 @@ def forward(module: nn.Module, message: Message, constraints: Constraints) -> Me
             for submodule in module:
                 message = forward(submodule, message, constraints)
             return message
-        case nn.Dropout():
-            return message
-        case nn.Linear():
-            return forward_linear(module, message, constraints)
-        case nn.Flatten():
-            return message
         case nn.ReLU():
             return forward_relu(module, message, constraints)
+        case nn.Linear():
+            return forward_linear(module, message, constraints)
+        case nn.Dropout():
+            return message
+        case nn.Flatten():
+            return message.apply(module)
         case _:
             raise NotImplementedError(
                 f'{type(module)} forward not implemented')

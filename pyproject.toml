@@ -19,3 +19,12 @@ dev = [
     "pytest>=9.0.2",
     "types-tqdm>=4.67.3.20260303",
 ]
+
+[tool.uv]
+package = true
+
+[project.scripts]
+appmax = "appmax.__main__:main"
+
+[tool.setuptools]
+packages = ["appmax"]
