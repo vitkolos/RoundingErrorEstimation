@@ -1,6 +1,6 @@
 import torch
 
-def lower_precision(net: torch.nn.Module, bits=16):
+def lower_precision(net: torch.nn.Module, bits=16) -> torch.nn.Module:
     """main interface of the module; modifies the network in-place"""
     if bits == 16:
         return net.half().to(dtype=torch.get_default_dtype())
@@ -25,7 +25,7 @@ class Quantization():
         # finds an integer where to map zero
         self.zero_point = int((max * self.a - min * self.b) / (max - min))
     
-    def quant_round(self, number: torch.Tensor):
+    def quant_round(self, number: torch.Tensor) -> torch.Tensor:
         # convert (round) to "bits" bits (such as 8 bits)
         q_number = torch.round(number / self.scale + self.zero_point)
         q_number = torch.clip(q_number, self.a, self.b)
@@ -34,7 +34,7 @@ class Quantization():
         return self.scale * (q_number - self.zero_point)
 
     @torch.no_grad()
-    def convert(self, network: torch.nn.Module):
+    def convert(self, network: torch.nn.Module) -> torch.nn.Module:
         for p in network.parameters():
             p.copy_(self.quant_round(p))
 
