@@ -33,7 +33,7 @@ def test_shortcut_weights_constraints():
     sample = torch.tensor([[2.0, 1.0]])
     constraints = appmax.neurons.Constraints()
     message = appmax.neurons.Message(sample)
-    message = appmax.neurons.forward(net, message, constraints)
+    message = appmax.neurons.collect(net, message, constraints)
     output = sample @ message.s_weight + message.s_bias
     assert torch.equal(output, net(sample))
     assert torch.equal(output, message.sample)
