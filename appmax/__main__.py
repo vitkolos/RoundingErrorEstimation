@@ -1,6 +1,6 @@
 import torch
 from appmax.applications import mnist
-import appmax.neurons
+import appmax.evaluation
 import appmax.optimize
 
 
@@ -20,25 +20,27 @@ def main():
     output: reported errors (single sample × polytope; maximum × average)
     """
     torch.manual_seed(42)
-    device = torch.accelerator.current_accelerator().type if torch.accelerator.is_available() else "cpu"
-    model = mnist.SmallDenseNet().to(device)
+    model = mnist.SmallDenseNet()
     data_split = mnist.MnistSplit()
     MODEL_FILE = "models/small_dense.pth"
 
     if False:
+        device = torch.accelerator.current_accelerator().type if torch.accelerator.is_available() else "cpu"
+        model.to(device)
         model.fit(data_split.train, data_split.dev)
+        model.cpu()
         model.save(MODEL_FILE)
     else:
         model.load(MODEL_FILE).eval()
         loader_dev = torch.utils.data.DataLoader(data_split.dev, batch_size=64)
         # print(model.evaluate(loader_dev))
 
-        model_approx = mnist.SmallDenseNet().to(device).eval()
+        model_approx = mnist.SmallDenseNet().eval()
         model_approx.load(MODEL_FILE)
         model_approx.round(bits=8)
 
         sample, y = data_split.dev[0]
-        eval_net = model.create_evaluation_network(model_approx).to(device).eval()
+        eval_net = appmax.evaluation.EvaluationNet(model, model_approx).eval()
         err_found = appmax.optimize.find_appmax(eval_net, sample)
         print('optimized', err_found)
 

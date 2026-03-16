@@ -3,6 +3,7 @@ import copy
 import torch
 from torch import nn
 import appmax.trainable
+import appmax.evaluation
 
 
 @dataclass
@@ -44,7 +45,7 @@ def collect(module: nn.Module, message: Message, constraints: Constraints) -> Me
     match module:
         case appmax.trainable.TrainableModel():
             return collect(module.layers, message, constraints)
-        case appmax.trainable.DualStreamModel():
+        case appmax.evaluation.DualStreamModel():
             message2 = copy.deepcopy(message)
             message = collect(module.first_stream, message, constraints)
             message2 = collect(module.second_stream, message2, constraints)
@@ -63,7 +64,7 @@ def collect(module: nn.Module, message: Message, constraints: Constraints) -> Me
         case nn.Flatten():
             return message.apply(module)
         case _:
-            raise NotImplementedError(f'{type(module)} neurons.collect not implemented')
+            raise NotImplementedError(f'{module.__class__.__name__} neurons.collect not implemented')
 
 
 def collect_relu(relu: nn.ReLU, message: Message, constraints: Constraints):
@@ -92,5 +93,5 @@ def collect_linear(linear: nn.Linear, message: Message, constraints: Constraints
 
     # s_bias = s_bias @ weight.t() + bias
     message.s_bias = linear(message.s_bias)
-    
+
     return message

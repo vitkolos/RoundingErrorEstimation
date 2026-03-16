@@ -1,10 +1,10 @@
 import torch
 import scipy.optimize
 import appmax.neurons
-import appmax.trainable
+import appmax.evaluation
 
 
-def find_appmax(eval_net: appmax.trainable.DualStreamModel, sample: torch.Tensor) -> float:
+def find_appmax(eval_net: appmax.evaluation.DualStreamModel, sample: torch.Tensor) -> float:
     constraints = appmax.neurons.Constraints()
     message = appmax.neurons.Message(sample)
     message = appmax.neurons.collect(eval_net, message, constraints)

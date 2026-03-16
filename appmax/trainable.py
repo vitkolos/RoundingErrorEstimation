@@ -6,18 +6,6 @@ import appmax.dataset
 import appmax.quantization
 
 
-class DualStreamModel(nn.Module):
-    def __init__(self, first_stream: nn.Module, second_stream: nn.Module, common_stream: nn.Module):
-        super().__init__()
-        self.first_stream = first_stream
-        self.second_stream = second_stream
-        self.common_stream = common_stream
-
-    def forward(self, x):
-        x = torch.cat((self.first_stream(x), self.second_stream(x)), dim=1)
-        return self.common_stream(x)
-
-
 class TrainableModel(nn.Module):
     """trainable single-stream model"""
 
@@ -130,39 +118,3 @@ class TrainableModel(nn.Module):
 
         avg_err = total_err / num_samples
         return max_err, avg_err
-
-    @torch.no_grad()
-    def create_evaluation_network(self, other: 'TrainableModel') -> DualStreamModel:
-        layers_self = list(self.layers)
-        layers_other = list(other.layers)
-        seq_self = nn.Sequential(*layers_self[:-1])
-        seq_other = nn.Sequential(*layers_other[:-1])
-        last_self = layers_self[-1]
-        last_other = layers_other[-1]
-
-        if not (isinstance(last_self, nn.Linear) and isinstance(last_other, nn.Linear)):
-            raise Exception('last layers are not linear')
-
-        in_features = last_self.in_features + last_other.in_features
-        out_features = last_self.out_features + last_other.out_features
-        seq_both = nn.Sequential(
-            magic_layer := nn.Linear(in_features, out_features),
-            nn.ReLU(),
-            output_layer := nn.Linear(out_features, 1, bias=False)
-        )
-
-        W1, b1 = last_self.weight, last_self.bias
-        W2, b2 = last_other.weight, last_other.bias
-        # magic W  =  W1 -W2
-        #            -W1  W2
-        magic_W = torch.vstack((
-            torch.hstack((W1, -W2)),
-            torch.hstack((-W1, W2))
-        ))
-        magic_layer.weight.copy_(magic_W)
-        # magic_b1 = b1 - b2
-        # mabic_b2 = b2 - b1
-        magic_layer.bias.copy_(torch.cat((b1-b2, b2-b1)))
-
-        nn.init.ones_(output_layer.weight)
-        return DualStreamModel(seq_self, seq_other, seq_both)
