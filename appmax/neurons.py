@@ -44,7 +44,8 @@ def collect(module: nn.Module, message: Message, constraints: Constraints) -> Me
     """passes message through the module and collects necessary information"""
     match module:
         case appmax.trainable.TrainableModel():
-            return collect(module.layers, message, constraints)
+            if module.layers is not None:
+                return collect(module.layers, message, constraints)
         case appmax.evaluation.DualStreamModel():
             message2 = copy.deepcopy(message)
             message = collect(module.first_stream, message, constraints)
@@ -63,8 +64,8 @@ def collect(module: nn.Module, message: Message, constraints: Constraints) -> Me
             return message
         case nn.Flatten():
             return message.apply(module)
-        case _:
-            raise NotImplementedError(f'{module.__class__.__name__} neurons.collect not implemented')
+
+    raise NotImplementedError(f'{module.__class__.__name__} neurons.collect not implemented')
 
 
 def collect_relu(relu: nn.ReLU, message: Message, constraints: Constraints):

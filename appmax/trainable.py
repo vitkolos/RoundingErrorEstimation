@@ -9,12 +9,15 @@ import appmax.quantization
 class TrainableModel(nn.Module):
     """trainable single-stream model"""
 
-    def __init__(self, layers: nn.Sequential):
+    def __init__(self, layers: nn.Sequential | None = None):
         super().__init__()
         self.layers = layers
 
     def forward(self, x):
-        return self.layers(x)
+        if self.layers is not None:
+            return self.layers(x)
+
+        raise NotImplementedError
 
     @property
     def device(self) -> torch.device:

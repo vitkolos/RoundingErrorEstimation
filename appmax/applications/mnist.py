@@ -29,7 +29,7 @@ class SmallDenseNet(TrainableModel):
         return metric_dev > 0.9
 
 
-class SmallDenseNet_original(nn.Module):
+class SmallDenseNetLegacy(TrainableModel):
     def __init__(self):
         super().__init__()
         self.network = nn.Sequential(
