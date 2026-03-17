@@ -1,9 +1,18 @@
+from dataclasses import dataclass
+
 import tqdm
 import torch
 from torch import nn
+from torch.utils.data import Dataset
 import torchmetrics
-import appmax.dataset
 import appmax.quantization
+
+
+@dataclass
+class DataSplit:
+    train: Dataset
+    dev: Dataset
+    test: Dataset
 
 
 class BaseModel(nn.Module):
@@ -53,8 +62,8 @@ class TrainableModel(BaseModel):
 
     def fit(
         self,
-        data_train: appmax.dataset.Dataset,
-        data_dev: appmax.dataset.Dataset,
+        data_train: Dataset,
+        data_dev: Dataset,
         batch_size: int = 64,
         epochs: int = 20,
     ):

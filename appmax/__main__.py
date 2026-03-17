@@ -1,7 +1,11 @@
 import torch
+import joblib
+import pandas as pd
+import tqdm
+
 from appmax.applications import mnist
 import appmax.evaluation
-import appmax.optimize
+import appmax.experiment
 
 
 def main():
@@ -20,9 +24,9 @@ def main():
     output: reported errors (single sample × polytope; maximum × average)
     """
     torch.manual_seed(42)
-    model = mnist.SmallDenseNetLegacy()
+    model = mnist.SmallDenseNet()
     data_split = mnist.MnistSplit()
-    # MODEL_FILE = "models/small_dense.pth"
+    MODEL_FILE = "models/small_dense.pth"
     # MODEL_FILE = "models/mnist_dense_net.pt"
 
     if False:
@@ -32,26 +36,25 @@ def main():
         model.cpu()
         model.save(MODEL_FILE)
     else:
-        # model.load(MODEL_FILE).eval()
-        model.eval()
-        loader_dev = torch.utils.data.DataLoader(data_split.dev, batch_size=64)
-        # print(model.evaluate(loader_dev))
-
-        model_approx = mnist.SmallDenseNetLegacy()
-        # model_approx.load(MODEL_FILE).eval()
-        model_approx.eval()
+        model.load(MODEL_FILE).eval()
+        model_approx = mnist.SmallDenseNet()
+        model_approx.load(MODEL_FILE).eval()
         model_approx.round(bits=8)
+        eval_net = appmax.evaluation.EvaluationNet(model, model_approx).eval()
 
         for i in range(0, 1):
-            sample, y = data_split.test[i]
-            print(sample.shape)
-            eval_net = appmax.evaluation.EvaluationNet(model, model_approx, 'network').eval()
-            # x_found, err_found = appmax.optimize.find_appmax(eval_net, sample, verbose=False)
-            # print(i, 'optimized', eval_net(sample).item(), err_found)
-            print(i, 'optimized', eval_net(sample).item())
+            sample = data_split.test[i][0]
+            result = appmax.experiment.run('mnist_0', eval_net, sample)
+            print(result['error_nearby'])
 
-        # max_err, avg_err = model.compute_error_aggregate(model_approx, loader_dev)
-        # print('on samples: max', max_err, '/ avg', avg_err)
+        total = 50
+        # memory = joblib.Memory('mem')
+        mem_run = appmax.experiment.run  # memory.cache(appmax.experiment.run)
+        p = joblib.Parallel(n_jobs=-1, return_as='generator_unordered')
+        # TODO: verify best practices -- how to share the eval_net and the dataset between the processes?
+        results_gen = p(joblib.delayed(mem_run)('mnist_0', eval_net, data_split.test[i][0]) for i in range(total))
+        df = pd.DataFrame(tqdm.tqdm(results_gen, leave=False, total=total))
+        print(df.describe())
 
 
 if __name__ == '__main__':
