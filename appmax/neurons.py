@@ -2,7 +2,6 @@ from dataclasses import dataclass, field
 import copy
 import torch
 from torch import nn
-import appmax.trainable
 import appmax.evaluation
 
 
@@ -43,9 +42,6 @@ class Constraints:
 def collect(module: nn.Module, message: Message, constraints: Constraints) -> Message:
     """passes message through the module and collects necessary information"""
     match module:
-        case appmax.trainable.TrainableModel():
-            if module.layers is not None:
-                return collect(module.layers, message, constraints)
         case appmax.evaluation.DualStreamModel():
             message2 = copy.deepcopy(message)
             message = collect(module.first_stream, message, constraints)
@@ -65,7 +61,7 @@ def collect(module: nn.Module, message: Message, constraints: Constraints) -> Me
         case nn.Flatten():
             return message.apply(module)
 
-    raise NotImplementedError(f'{module.__class__.__name__} neurons.collect not implemented')
+    raise NotImplementedError(f"neurons.collect is not implemented for '{type(module).__name__}' object")
 
 
 def collect_relu(relu: nn.ReLU, message: Message, constraints: Constraints):

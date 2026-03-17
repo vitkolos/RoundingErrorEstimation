@@ -66,7 +66,7 @@ def test_shallow_neurons():
     sample = torch.tensor([[2.0, 1.0]])
     constraints = appmax.neurons.Constraints()
     message = appmax.neurons.Message(sample)
-    message = appmax.neurons.collect(net, message, constraints)
+    message = appmax.neurons.collect(net.layers, message, constraints)
     output = sample @ message.s_weight + message.s_bias
     assert torch.equal(output, net(sample))
     assert torch.equal(output, message.sample)
@@ -79,7 +79,7 @@ def test_deeper_constraints():
     sample = torch.tensor([[2.0, 1.0]])
     constraints = appmax.neurons.Constraints()
     message = appmax.neurons.Message(sample)
-    message = appmax.neurons.collect(net, message, constraints)
+    message = appmax.neurons.collect(net.layers, message, constraints)
     output = sample @ message.s_weight + message.s_bias
     assert torch.equal(output, net(sample))
     assert torch.equal(output, message.sample)

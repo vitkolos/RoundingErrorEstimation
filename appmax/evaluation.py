@@ -1,5 +1,32 @@
 import torch
 from torch import nn
+import torchmetrics
+
+
+@torch.no_grad()
+def compute_error_tensor(first: nn.Module, second: nn.Module, X: torch.Tensor) -> torch.Tensor:
+    pred1 = first(X)
+    pred2 = second(X)
+    l1_norms = (pred1 - pred2).abs().sum(dim=1)
+    return l1_norms
+
+
+@torch.no_grad()
+def compute_error_aggregate(first: nn.Module, second: nn.Module, loader: torch.utils.data.DataLoader) -> tuple[float, float]:
+    device = next(first.parameters()).device
+    second = second.to(device)
+    first.eval()
+    second.eval()
+    max_err = torchmetrics.MaxMetric()
+    avg_err = torchmetrics.MeanMetric()
+
+    for X, y in loader:
+        X = X.to(device)
+        error_tensor = compute_error_tensor(first, second, X)
+        max_err.update(error_tensor)
+        avg_err.update(error_tensor)
+
+    return max_err.compute().item(), avg_err.compute().item()
 
 
 class DualStreamModel(nn.Module):

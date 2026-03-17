@@ -4,13 +4,12 @@ import appmax.neurons
 import appmax.evaluation
 
 
-def find_appmax(eval_net: appmax.evaluation.DualStreamModel, sample: torch.Tensor, verbose: bool = True) -> float:
+def find_appmax(eval_net: appmax.evaluation.DualStreamModel, sample: torch.Tensor, verbose: bool = True) -> tuple[torch.Tensor, float]:
     constraints = appmax.neurons.Constraints()
     message = appmax.neurons.Message(sample)
     message = appmax.neurons.collect(eval_net, message, constraints)
     sample_found, err_found = optimize(message, constraints, bounds=(-0.5, 3.0), verbose=verbose)
-    # sample_found can be reshaped as sample
-    return err_found
+    return sample_found.reshape_as(sample), err_found
 
 
 def optimize(message: appmax.neurons.Message, constraints: appmax.neurons.Constraints, bounds: tuple, verbose: bool) -> tuple[torch.Tensor, float]:
@@ -32,8 +31,12 @@ def optimize(message: appmax.neurons.Message, constraints: appmax.neurons.Constr
     c = objective.squeeze().cpu().numpy()
     A_ub = torch.cat((U_weight, S_weight)).cpu().numpy()
     b_ub = torch.cat((U_bias, S_bias)).cpu().numpy()
-    result = scipy.optimize.linprog(c, A_ub, b_ub, bounds=bounds, options={"disp": verbose})
-
+    result = scipy.optimize.linprog(c, A_ub, b_ub, bounds=bounds, options={'disp': verbose})
     # TODO: somehow process result.status or result.success?
-    x = torch.from_numpy(result.x).to(dtype=torch.get_default_dtype())
-    return x, -result.fun
+
+    if result.x is None or result.fun is None:
+        raise RuntimeError('result is empty')
+
+    found_x = torch.from_numpy(result.x).to(dtype=torch.get_default_dtype())
+    found_maximum = -result.fun + message.s_bias.item()
+    return found_x, found_maximum

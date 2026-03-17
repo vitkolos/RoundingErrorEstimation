@@ -1,7 +1,7 @@
 import torch
 import torchvision
 import torchmetrics
-from appmax.trainable import TrainableModel, nn
+from appmax.trainable import BaseModel, TrainableModel, nn
 from appmax.dataset import DataSplit
 
 
@@ -29,7 +29,7 @@ class SmallDenseNet(TrainableModel):
         return metric_dev > 0.9
 
 
-class SmallDenseNetLegacy(TrainableModel):
+class SmallDenseNetLegacy(BaseModel):
     def __init__(self):
         super().__init__()
         self.network = nn.Sequential(

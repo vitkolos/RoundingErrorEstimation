@@ -23,7 +23,7 @@ def main():
     model = mnist.SmallDenseNetLegacy()
     data_split = mnist.MnistSplit()
     # MODEL_FILE = "models/small_dense.pth"
-    MODEL_FILE = "models/mnist_dense_net.pt"
+    # MODEL_FILE = "models/mnist_dense_net.pt"
 
     if False:
         device = torch.accelerator.current_accelerator().type if torch.accelerator.is_available() else "cpu"
@@ -32,21 +32,25 @@ def main():
         model.cpu()
         model.save(MODEL_FILE)
     else:
-        model.load(MODEL_FILE).eval()
+        # model.load(MODEL_FILE).eval()
+        model.eval()
         loader_dev = torch.utils.data.DataLoader(data_split.dev, batch_size=64)
         # print(model.evaluate(loader_dev))
 
         model_approx = mnist.SmallDenseNetLegacy()
-        model_approx.load(MODEL_FILE).eval()
+        # model_approx.load(MODEL_FILE).eval()
+        model_approx.eval()
         model_approx.round(bits=8)
 
         for i in range(0, 1):
             sample, y = data_split.test[i]
+            print(sample.shape)
             eval_net = appmax.evaluation.EvaluationNet(model, model_approx, 'network').eval()
-            err_found = appmax.optimize.find_appmax(eval_net, sample, verbose=False)
-            print(i, 'optimized', eval_net(sample).item(), err_found)
+            # x_found, err_found = appmax.optimize.find_appmax(eval_net, sample, verbose=False)
+            # print(i, 'optimized', eval_net(sample).item(), err_found)
+            print(i, 'optimized', eval_net(sample).item())
 
-        # max_err, avg_err = model.compute_error(model_approx, loader_dev)
+        # max_err, avg_err = model.compute_error_aggregate(model_approx, loader_dev)
         # print('on samples: max', max_err, '/ avg', avg_err)
 
 

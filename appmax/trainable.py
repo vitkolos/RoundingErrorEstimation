@@ -6,18 +6,11 @@ import appmax.dataset
 import appmax.quantization
 
 
-class TrainableModel(nn.Module):
-    """trainable single-stream model"""
+class BaseModel(nn.Module):
+    """base for a single-stream model"""
 
-    def __init__(self, layers: nn.Sequential | None = None):
+    def __init__(self):
         super().__init__()
-        self.layers = layers
-
-    def forward(self, x):
-        if self.layers is not None:
-            return self.layers(x)
-
-        raise NotImplementedError
 
     @property
     def device(self) -> torch.device:
@@ -25,6 +18,28 @@ class TrainableModel(nn.Module):
 
     def callback_stopping(self, epoch: int, metric_dev: float):
         return False
+
+    def save(self, path):
+        data = self.state_dict()
+        torch.save(data, path)
+
+    def load(self, path):
+        data = torch.load(path, weights_only=True, map_location=self.device)
+        self.load_state_dict(data)
+        return self
+
+    def round(self, bits=16):
+        """modifies the network in-place (converts the network to its approximation)"""
+        return appmax.quantization.lower_precision(self, bits)
+
+
+class TrainableModel(BaseModel):
+    def __init__(self, layers: nn.Sequential):
+        super().__init__()
+        self.layers = layers
+
+    def forward(self, x):
+        return self.layers(x)
 
     def configure(
         self,
@@ -87,37 +102,3 @@ class TrainableModel(nn.Module):
         loss = loss_sum.item() / len(loader)
         metric = self.metric_fn.compute().item()
         return loss, metric
-
-    def save(self, path):
-        data = self.state_dict()
-        torch.save(data, path)
-
-    def load(self, path):
-        data = torch.load(path, weights_only=True, map_location=self.device)
-        self.load_state_dict(data)
-        return self
-
-    def round(self, bits=16):
-        """modifies the network in-place (converts the network to its approximation)"""
-        return appmax.quantization.lower_precision(self, bits)
-
-    @torch.no_grad()
-    def compute_error(self, other: nn.Module, loader: torch.utils.data.DataLoader) -> tuple[float, float]:
-        device = self.device
-        other = other.to(device)
-        self.eval()
-        other.eval()
-        max_err, total_err = 0.0, 0.0
-        num_samples = 0
-
-        for X, y in loader:
-            X, y = X.to(device), y.to(device)
-            pred1 = self(X)
-            pred2 = other(X)
-            num_samples += y.shape[0]
-            l1_norms = (pred1 - pred2).abs().sum(dim=1)
-            max_err = max(max_err, l1_norms.max().item())
-            total_err += l1_norms.sum().item()
-
-        avg_err = total_err / num_samples
-        return max_err, avg_err
