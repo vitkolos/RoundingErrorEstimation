@@ -1,4 +1,5 @@
 import torch
+import joblib
 
 from appmax.applications import mnist
 import appmax.evaluation
@@ -39,8 +40,8 @@ def main():
         model_approx.round(bits=8)
         eval_net = appmax.evaluation.EvaluationNet(model, model_approx).eval()
 
-        # TODO: add joblib wrapper (set n_jobs=-1 & threading backend)
-        appmax.experiment.run('experiments/mnist', '1', eval_net, data_split.test, 10)
+        with joblib.parallel_config(backend='threading', n_jobs=-1):
+            appmax.experiment.run('experiments/mnist', '1', eval_net, data_split.test, first_k=10)
 
 
 if __name__ == '__main__':
