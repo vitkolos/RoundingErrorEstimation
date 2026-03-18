@@ -1,7 +1,4 @@
 import torch
-import joblib
-import pandas as pd
-import tqdm
 
 from appmax.applications import mnist
 import appmax.evaluation
@@ -42,19 +39,8 @@ def main():
         model_approx.round(bits=8)
         eval_net = appmax.evaluation.EvaluationNet(model, model_approx).eval()
 
-        for i in range(0, 1):
-            sample = data_split.test[i][0]
-            result = appmax.experiment.run('mnist_0', eval_net, sample)
-            print(result['error_nearby'])
-
-        total = 50
-        # memory = joblib.Memory('mem')
-        mem_run = appmax.experiment.run  # memory.cache(appmax.experiment.run)
-        p = joblib.Parallel(n_jobs=-1, return_as='generator_unordered')
-        # TODO: verify best practices -- how to share the eval_net and the dataset between the processes?
-        results_gen = p(joblib.delayed(mem_run)('mnist_0', eval_net, data_split.test[i][0]) for i in range(total))
-        df = pd.DataFrame(tqdm.tqdm(results_gen, leave=False, total=total))
-        print(df.describe())
+        # TODO: add joblib wrapper (set n_jobs=-1 & threading backend)
+        appmax.experiment.run('experiments/mnist', '1', eval_net, data_split.test, 10)
 
 
 if __name__ == '__main__':

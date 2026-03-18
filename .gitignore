@@ -4,3 +4,4 @@ datasets
 models
 *.pt
 *.egg-info
+experiments
