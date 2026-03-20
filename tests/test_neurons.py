@@ -8,7 +8,7 @@ def net_param(list):
     return nn.Parameter(torch.tensor(list), requires_grad=False)
 
 
-class TestNetShallow(appmax.trainable.TrainableModel):
+class DummyNetShallow(appmax.trainable.TrainableModel):
     def __init__(self):
         super().__init__(
             nn.Sequential(
@@ -32,7 +32,7 @@ class TestNetShallow(appmax.trainable.TrainableModel):
             fc2.bias = net_param([0.0, 0.0])
 
 
-class TestNetDeeper(appmax.trainable.TrainableModel):
+class DummyNetDeeper(appmax.trainable.TrainableModel):
     def __init__(self):
         super().__init__(
             nn.Sequential(
@@ -62,7 +62,7 @@ class TestNetDeeper(appmax.trainable.TrainableModel):
 
 
 def test_shallow_neurons():
-    net = TestNetShallow()
+    net = DummyNetShallow()
     sample = torch.tensor([[2.0, 1.0]])
     constraints = appmax.neurons.Constraints()
     message = appmax.neurons.Message(sample)
@@ -75,7 +75,7 @@ def test_shallow_neurons():
 
 
 def test_deeper_constraints():
-    net = TestNetDeeper()
+    net = DummyNetDeeper()
     sample = torch.tensor([[2.0, 1.0]])
     constraints = appmax.neurons.Constraints()
     message = appmax.neurons.Message(sample)

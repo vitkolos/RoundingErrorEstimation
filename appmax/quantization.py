@@ -15,7 +15,7 @@ def lower_precision(net: torch.nn.Module, bits=16) -> torch.nn.Module:
 class Quantization():
     """uniform affine (asymmetric) quantization: maps the values of parameters onto bits and back"""
 
-    def __init__(self, min, max, bits=8):
+    def __init__(self, min: float, max: float, bits: int = 8):
         # two's complement range for "bits" bits (but could be also from 0 to 2**bits-1)
         self.a = - 2**(bits-1)
         self.b = 2**(bits-1) - 1
@@ -24,7 +24,7 @@ class Quantization():
         self.scale = (max - min) / (self.b - self.a)
         # finds an integer where to map zero
         self.zero_point = int((max * self.a - min * self.b) / (max - min))
-    
+
     def quant_round(self, number: torch.Tensor) -> torch.Tensor:
         # convert (round) to "bits" bits (such as 8 bits)
         q_number = torch.round(number / self.scale + self.zero_point)

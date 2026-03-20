@@ -64,7 +64,7 @@ def collect(module: nn.Module, message: Message, constraints: Constraints) -> Me
     raise NotImplementedError(f"neurons.collect is not implemented for '{type(module).__name__}' object")
 
 
-def collect_relu(relu: nn.ReLU, message: Message, constraints: Constraints):
+def collect_relu(relu: nn.ReLU, message: Message, constraints: Constraints) -> Message:
     message.sample = relu(message.sample)
     unsaturated = message.sample > 0
     unsaturated_sq = unsaturated.squeeze()
@@ -82,7 +82,7 @@ def collect_relu(relu: nn.ReLU, message: Message, constraints: Constraints):
     return message
 
 
-def collect_linear(linear: nn.Linear, message: Message, constraints: Constraints):
+def collect_linear(linear: nn.Linear, message: Message, constraints: Constraints) -> Message:
     message.sample = linear(message.sample)
 
     # s_weight = s_weight @ weight.t()

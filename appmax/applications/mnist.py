@@ -47,7 +47,7 @@ class SmallDenseNetLegacy(BaseModel):
 
 
 class MnistSplit(DataSplit):
-    def __init__(self,):
+    def __init__(self):
         transform = torchvision.transforms.Compose([
             torchvision.transforms.ToTensor(),
             torchvision.transforms.Normalize((0.1307,), (0.3081,))

@@ -8,8 +8,8 @@ dependencies = [
     "click>=8.3.1",
     "joblib>=1.5.3",
     "pandas>=3.0.1",
+    "scikit-learn>=1.8.0",
     "scipy>=1.17.1",
-    "scipy-stubs>=1.17.1.2",
     "torch>=2.10.0",
     "torchmetrics>=1.8.2",
     "torchvision>=0.25.0",
@@ -19,15 +19,19 @@ dependencies = [
 [dependency-groups]
 dev = [
     "mypy>=1.19.1",
+    "pandas-stubs>=3.0.0.260204",
     "pytest>=9.0.2",
+    "scipy-stubs>=1.17.1.2",
     "types-tqdm>=4.67.3.20260303",
 ]
 
-[tool.uv]
-package = true
+[tool.mypy]
+python_version = "3.13"
+warn_unused_configs = true
 
-[project.scripts]
-appmax = "appmax.__main__:main"
-
-[tool.setuptools]
-packages = ["appmax"]
+[[tool.mypy.overrides]]
+module = [
+    "torchvision.*",
+    "joblib.*"
+]
+ignore_missing_imports = true
