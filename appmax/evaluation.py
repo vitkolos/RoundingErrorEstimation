@@ -5,9 +5,9 @@ from appmax.trainable import Bounds
 
 
 @torch.no_grad()
-def compute_error_tensor(first: nn.Module, second: nn.Module, X: torch.Tensor) -> torch.Tensor:
-    pred1 = first(X)
-    pred2 = second(X)
+def compute_error_tensor(first: nn.Module, second: nn.Module, xs: torch.Tensor) -> torch.Tensor:
+    pred1 = first(xs)
+    pred2 = second(xs)
     l1_norms = (pred1 - pred2).abs().sum(dim=1)
     return l1_norms
 
@@ -21,9 +21,9 @@ def compute_error_aggregate(first: nn.Module, second: nn.Module, loader: torch.u
     max_err = torchmetrics.MaxMetric()
     avg_err = torchmetrics.MeanMetric()
 
-    for X, y in loader:
-        X = X.to(device)
-        error_tensor = compute_error_tensor(first, second, X)
+    for xs, _ in loader:
+        xs = xs.to(device)
+        error_tensor = compute_error_tensor(first, second, xs)
         max_err.update(error_tensor)
         avg_err.update(error_tensor)
 

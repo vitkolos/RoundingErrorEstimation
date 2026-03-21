@@ -38,10 +38,15 @@ def main(dataset, run_id, train, bits, samples):
             MODEL_CLASS = california_housing.SimpleNet
             data_split = california_housing.CaliforniaHousingSplit()
         case 'mnist':
-            # MODEL_FILE = "models/mnist_small_dense.pt"
+            # MODEL_FILE = "models/mnist_new_dense.pt"
             # MODEL_CLASS = mnist.SmallDenseNet
             MODEL_FILE = "models/mnist_dense_net.pt"
             MODEL_CLASS = mnist.SmallDenseNetLegacy
+            data_split = mnist.MnistSplit()
+            seq_name = 'network'
+        case 'mnist-conv':
+            MODEL_FILE = "models/mnist_conv_net.pt"
+            MODEL_CLASS = mnist.SmallConvNetLegacy
             data_split = mnist.MnistSplit()
             seq_name = 'network'
 
@@ -64,12 +69,12 @@ def main(dataset, run_id, train, bits, samples):
 
         eval_net = appmax.evaluation.EvaluationNet(model, model_approx, data_split.bounds, seq_name=seq_name).eval()
 
-        # input_sample = data_split.test[0][0]
-        # result = appmax.experiment.step('', 0, eval_net, input_sample)
-        # print('errors', result['error_sample'], result['error_nearby'])
+        input_sample = data_split.test[0][0]
+        result = appmax.experiment.step('', 0, eval_net, input_sample)
+        print('errors', result['error_sample'], result['error_nearby'])
 
-        with joblib.parallel_config(backend='threading', n_jobs=-1):
-            appmax.experiment.run(f'experiments/{dataset}', run_id, eval_net, data_split.test, first_k=samples)
+        # with joblib.parallel_config(backend='threading', n_jobs=-1):
+        #     appmax.experiment.run(f'experiments/{dataset}', run_id, eval_net, data_split.test, first_k=samples)
 
 
 if __name__ == '__main__':

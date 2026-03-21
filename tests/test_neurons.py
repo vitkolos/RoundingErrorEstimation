@@ -63,12 +63,12 @@ class DummyNetDeeper(appmax.trainable.TrainableModel):
 
 def test_shallow_neurons():
     net = DummyNetShallow()
-    sample = torch.tensor([[2.0, 1.0]])
+    sample = torch.tensor([2.0, 1.0])
     constraints = appmax.neurons.Constraints()
     message = appmax.neurons.Message(sample)
     message = appmax.neurons.collect(net.layers, message, constraints)
     output = sample @ message.s_weight + message.s_bias
-    assert torch.equal(output, net(sample))
+    assert torch.equal(output, net(sample.unsqueeze(0)))
     assert torch.equal(output, message.sample)
     assert torch.equal(constraints.S_weight[0], torch.tensor([[-1., -1.]])), \
         'weights corresponding to the (saturated) hidden neuron 2 should be (-1, -1)'
@@ -76,12 +76,12 @@ def test_shallow_neurons():
 
 def test_deeper_constraints():
     net = DummyNetDeeper()
-    sample = torch.tensor([[2.0, 1.0]])
+    sample = torch.tensor([2.0, 1.0])
     constraints = appmax.neurons.Constraints()
     message = appmax.neurons.Message(sample)
     message = appmax.neurons.collect(net.layers, message, constraints)
     output = sample @ message.s_weight + message.s_bias
-    assert torch.equal(output, net(sample))
+    assert torch.equal(output, net(sample.unsqueeze(0)))
     assert torch.equal(output, message.sample)
     assert torch.equal(constraints.U_weight[1][0], torch.tensor([1.5, 0.5])), \
         'weights corresponding to the (unsaturated) neuron H2.1 should be (1.0 + 0.5, 1.0 - 0.5)'

@@ -12,9 +12,10 @@ class Message:
     s_bias: torch.Tensor
 
     def __init__(self, sample: torch.Tensor):
-        self.sample = sample
+        """'sample' needs to be a single sample (not a batch)"""
+        self.sample = sample.unsqueeze(0)  # batch-like
         # create a unit matrix with a shape corresponding to the input
-        self.s_weight = torch.eye(self.sample.numel()).reshape((-1, *self.sample.shape))
+        self.s_weight = torch.eye(sample.numel()).reshape((-1, *sample.shape))
         self.s_bias = torch.zeros_like(self.sample)
 
     def apply(self, module: nn.Module):

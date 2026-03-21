@@ -1,5 +1,4 @@
 from dataclasses import dataclass
-
 import tqdm
 import torch
 from torch import nn

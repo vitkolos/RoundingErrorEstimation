@@ -1,8 +1,9 @@
+from pathlib import Path
+
 import torch
 import joblib
 import pandas as pd
 import tqdm
-from pathlib import Path
 
 import appmax.evaluation
 import appmax.optimize
@@ -59,9 +60,13 @@ def run(
 def step(run_id: str, sample_index: int, eval_net: appmax.evaluation.EvaluationNet, input_sample: torch.Tensor):
     """function for parallel execution
     (run_id and sample_index are used for caching, eval_net and input_sample are ignored)"""
+
+    input_sample_b = input_sample.unsqueeze(0)  # sample -> batch (to support any PyTorch network)
+
     with torch.no_grad():
-        error_sample = eval_net(input_sample).item()
-        input_nearby, error_nearby = appmax.optimize.find_appmax(eval_net, input_sample, verbose=False)
+        error_sample = eval_net(input_sample_b).item()
+
+    input_nearby, error_nearby = appmax.optimize.find_appmax(eval_net, input_sample, verbose=False)
 
     return {
         'sample_index': sample_index,

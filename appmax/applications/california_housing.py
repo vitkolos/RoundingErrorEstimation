@@ -4,23 +4,6 @@ import sklearn.datasets
 from appmax.trainable import nn, TrainableModel, DataSplit
 
 
-class SimpleNet(TrainableModel):
-    def __init__(self):
-        super().__init__(
-            nn.Sequential(
-                nn.Linear(8, 100),
-                nn.ReLU(),
-                nn.Dropout(0.2),
-                nn.Linear(100, 1),
-            )
-        )
-        self.configure(
-            loss_fn=torch.nn.MSELoss(),
-            optimizer=torch.optim.Adam(self.parameters(), lr=0.001),
-            metric_fn=torchmetrics.MeanSquaredError(),
-        )
-
-
 class CaliforniaHousingDataset(torch.utils.data.Dataset):
     """https://scikit-learn.org/stable/datasets/real_world.html#california-housing-dataset"""
 
@@ -42,3 +25,20 @@ class CaliforniaHousingSplit(DataSplit):
         self.train, self.dev, self.test = torch.utils.data.random_split(dataset, [6/8, 1/8, 1/8])
         self.bounds = [(0.4, 15.0), (1.0, 52.0), (0.8, 142.0), (0.3, 34.1),
                        (3.0, 35682.0), (0.6, 1243.4), (32.5, 42.0), (-124.4, -114.3)]
+
+
+class SimpleNet(TrainableModel):
+    def __init__(self):
+        super().__init__(
+            nn.Sequential(
+                nn.Linear(8, 100),
+                nn.ReLU(),
+                nn.Dropout(0.2),
+                nn.Linear(100, 1),
+            )
+        )
+        self.configure(
+            loss_fn=torch.nn.MSELoss(),
+            optimizer=torch.optim.Adam(self.parameters(), lr=0.001),
+            metric_fn=torchmetrics.MeanSquaredError(),
+        )
