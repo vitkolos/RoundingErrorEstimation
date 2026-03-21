@@ -9,10 +9,11 @@ import appmax.experiment
 
 @click.command()
 @click.argument('dataset')
-@click.argument('run-id', default='1')
+@click.argument('run-id', default='run')
 @click.option('--train', is_flag=True)
 @click.option('-b', '--bits', default=8)
-def main(dataset, run_id, train, bits):
+@click.option('-n', 'samples', default=-1)
+def main(dataset, run_id, train, bits, samples):
     """
     1) prepare a dataset
     2) train (or provide) a network
@@ -47,7 +48,7 @@ def main(dataset, run_id, train, bits):
     model = MODEL_CLASS()
 
     if train:
-        device = torch.accelerator.current_accelerator().type if torch.accelerator.is_available() else "cpu"
+        device = torch.accelerator.current_accelerator().type if torch.accelerator.is_available() else 'cpu'
         model.to(device)
         model.fit(data_split.train, data_split.dev)
         model.cpu()
@@ -68,7 +69,7 @@ def main(dataset, run_id, train, bits):
         # print('errors', result['error_sample'], result['error_nearby'])
 
         with joblib.parallel_config(backend='threading', n_jobs=-1):
-            appmax.experiment.run(f'experiments/{dataset}', run_id, eval_net, data_split.test, first_k=10)
+            appmax.experiment.run(f'experiments/{dataset}', run_id, eval_net, data_split.test, first_k=samples)
 
 
 if __name__ == '__main__':

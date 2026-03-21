@@ -21,7 +21,7 @@ def run(
     def get_sample(i): return samples[i][0]
     total_length = len(samples)
 
-    if first_k is not None:
+    if first_k is not None and first_k > 0:
         total_length = min(total_length, first_k)
 
     # prepare output dir
