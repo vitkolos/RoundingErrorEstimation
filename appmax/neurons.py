@@ -12,9 +12,9 @@ class Message:
     s_bias: torch.Tensor
 
     def __init__(self, sample: torch.Tensor):
-        self.sample = sample if sample.shape[0] == 1 else sample.unsqueeze(0)
+        self.sample = sample
         # create a unit matrix with a shape corresponding to the input
-        self.s_weight = torch.eye(self.sample.numel()).reshape((-1, *self.sample.shape[1:]))
+        self.s_weight = torch.eye(self.sample.numel()).reshape((-1, *self.sample.shape))
         self.s_bias = torch.zeros_like(self.sample)
 
     def apply(self, module: nn.Module):
@@ -24,9 +24,9 @@ class Message:
         return self
 
     def cat(self, other: 'Message'):
-        self.sample = torch.cat((self.sample, other.sample), dim=1)
-        self.s_weight = torch.cat((self.s_weight, other.s_weight), dim=1)
-        self.s_bias = torch.cat((self.s_bias, other.s_bias), dim=1)
+        self.sample = torch.cat((self.sample, other.sample), dim=-1)
+        self.s_weight = torch.cat((self.s_weight, other.s_weight), dim=-1)
+        self.s_bias = torch.cat((self.s_bias, other.s_bias), dim=-1)
         return self
 
 

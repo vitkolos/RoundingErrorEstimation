@@ -56,3 +56,4 @@ class MnistSplit(DataSplit):
         train_dev = torchvision.datasets.MNIST(train=True, **params)
         self.train, self.dev = torch.utils.data.random_split(train_dev, [4/5, 1/5])
         self.test = torchvision.datasets.MNIST(train=False, **params)
+        self.bounds = (-0.5, 3.0)

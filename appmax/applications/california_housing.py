@@ -1,17 +1,42 @@
 import torch
-import torchvision
 import torchmetrics
-from appmax.trainable import nn, BaseModel, TrainableModel, DataSplit
+import sklearn.datasets
+from appmax.trainable import nn, TrainableModel, DataSplit
+
+
+class SimpleNet(TrainableModel):
+    def __init__(self):
+        super().__init__(
+            nn.Sequential(
+                nn.Linear(8, 100),
+                nn.ReLU(),
+                nn.Dropout(0.2),
+                nn.Linear(100, 1),
+            )
+        )
+        self.configure(
+            loss_fn=torch.nn.MSELoss(),
+            optimizer=torch.optim.Adam(self.parameters(), lr=0.001),
+            metric_fn=torchmetrics.MeanSquaredError(),
+        )
+
+
+class CaliforniaHousingDataset(torch.utils.data.Dataset):
+    def __init__(self):
+        data, target = sklearn.datasets.fetch_california_housing(data_home='datasets', return_X_y=True)
+        self.data = torch.from_numpy(data).to(dtype=torch.get_default_dtype())
+        self.target = torch.from_numpy(target).to(dtype=torch.get_default_dtype())
+
+    def __len__(self):
+        return self.data.shape[0]
+
+    def __getitem__(self, index):
+        return self.data[index], self.target[index]
 
 
 class CaliforniaHousingSplit(DataSplit):
     def __init__(self):
-        # transform = torchvision.transforms.Compose([
-        #     torchvision.transforms.ToTensor(),
-        #     torchvision.transforms.Normalize((0.1307,), (0.3081,))
-        # ])
-        # params = {"root": "datasets", "download": True, "transform": transform}
-        # train_dev = torchvision.datasets.MNIST(train=True, **params)
-        # self.train, self.dev = torch.utils.data.random_split(train_dev, [4/5, 1/5])
-        # self.test = torchvision.datasets.MNIST(train=False, **params)
-        ...
+        dataset = CaliforniaHousingDataset()
+        self.train, self.dev, self.test = torch.utils.data.random_split(dataset, [6/8, 1/8, 1/8])
+        self.bounds = [(0.4999, 15.0), (1.0, 52.0), (0.8462, 141.91), (0.3333, 34.067),
+                       (3.0, 35682.0), (0.6923, 1243.3), (32.54, 41.95), (-124.35, -114.31)]

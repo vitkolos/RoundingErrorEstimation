@@ -14,7 +14,8 @@ def run(
     eval_net: appmax.evaluation.EvaluationNet,
     samples: list,
     first_k: int | None = None,
-    use_memory: bool = True
+    use_memory: bool = True,
+    show_tensors: bool = False
 ):
     # prepare dataset
     def get_sample(i): return samples[i][0]
@@ -42,15 +43,17 @@ def run(
     progress_gen = tqdm.tqdm(results_gen, leave=False, total=total_length)
 
     # run & process output
-    DESIRED_KEYS = [INDEX_KEY := 'sample_index', 'error_sample', 'error_nearby']
+    df = pd.DataFrame(progress_gen)
+    df = df.set_index('sample_index').sort_index()
+    df_errors = df[['error_sample', 'error_nearby']]
+    df_errors.to_csv(experiment_path / f'{run_id}_results.csv')
+    df_errors.describe(percentiles=[0.5]).to_csv(experiment_path / f'{run_id}_described.csv')
+    input_nearby_stack = torch.stack(df['input_nearby'].to_list())
+    torch.save(input_nearby_stack, experiment_path / f'{run_id}_tensors.pt')
 
-    def filter_keys(result):
-        return {key: result[key] for key in DESIRED_KEYS}
-
-    df = pd.DataFrame(filter_keys(result) for result in progress_gen)
-    df = df.set_index(INDEX_KEY).sort_index()
-    df.to_csv(experiment_path / f'{run_id}_results.csv')
-    df.describe(percentiles=[0.5]).to_csv(experiment_path / f'{run_id}_described.csv')
+    if show_tensors:
+        df_tensors = df[['input_sample', 'input_nearby']].map(torch.Tensor.tolist)
+        df_tensors.to_csv(experiment_path / f'{run_id}_tensors.csv')
 
 
 def step(run_id: str, sample_index: int, eval_net: appmax.evaluation.EvaluationNet, input_sample: torch.Tensor):

@@ -1,7 +1,7 @@
 import torch
 import joblib
 
-from appmax.applications import mnist
+from appmax.applications import california_housing, mnist
 import appmax.evaluation
 import appmax.experiment
 
@@ -22,10 +22,17 @@ def main():
     output: reported errors (single sample × polytope; maximum × average)
     """
     torch.manual_seed(42)
-    model = mnist.SmallDenseNet()
-    data_split = mnist.MnistSplit()
-    MODEL_FILE = "models/small_dense.pth"
-    # MODEL_FILE = "models/mnist_dense_net.pt"
+    if True:
+        MODEL_FILE = "models/california_housing_simple_net.pt"
+        MODEL_CLASS = california_housing.SimpleNet
+        data_split = california_housing.CaliforniaHousingSplit()
+    else:
+        # MODEL_FILE = "models/mnist_small_dense.pt"
+        # MODEL_CLASS = mnist.SmallDenseNet
+        MODEL_FILE = "models/mnist_dense_net.pt"
+        MODEL_CLASS = mnist.SmallDenseNetLegacy
+        data_split = mnist.MnistSplit()
+    model = MODEL_CLASS()
 
     if False:
         device = torch.accelerator.current_accelerator().type if torch.accelerator.is_available() else "cpu"
@@ -35,13 +42,21 @@ def main():
         model.save(MODEL_FILE)
     else:
         model.load(MODEL_FILE).eval()
-        model_approx = mnist.SmallDenseNet()
+        model_approx = MODEL_CLASS()
         model_approx.load(MODEL_FILE).eval()
         model_approx.round(bits=8)
-        eval_net = appmax.evaluation.EvaluationNet(model, model_approx).eval()
+
+        # loader_dev = torch.utils.data.DataLoader(data_split.dev, batch_size=64)
+        # print('metric', model.evaluate(loader_dev), model_approx.evaluate(loader_dev))
+
+        eval_net = appmax.evaluation.EvaluationNet(model, model_approx, data_split.bounds, seq_name='layers').eval()
+
+        # input_sample = data_split.test[0][0]
+        # result = appmax.experiment.step('', 0, eval_net, input_sample)
+        # print('errors', result['error_sample'], result['error_nearby'])
 
         with joblib.parallel_config(backend='threading', n_jobs=-1):
-            appmax.experiment.run('experiments/mnist', '1', eval_net, data_split.test, first_k=10)
+            appmax.experiment.run('experiments/california', '2', eval_net, data_split.test, first_k=10)
 
 
 if __name__ == '__main__':

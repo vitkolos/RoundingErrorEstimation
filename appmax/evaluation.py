@@ -1,6 +1,7 @@
 import torch
 from torch import nn
 import torchmetrics
+from appmax.trainable import Bounds
 
 
 @torch.no_grad()
@@ -37,13 +38,18 @@ class DualStreamModel(nn.Module):
         self.common_stream = common_stream
 
     def forward(self, x):
-        x = torch.cat((self.first_stream(x), self.second_stream(x)), dim=1)
+        x = torch.cat((self.first_stream(x), self.second_stream(x)), dim=-1)
         return self.common_stream(x)
 
 
 class EvaluationNet(DualStreamModel):
     @torch.no_grad()
-    def __init__(self, first: nn.Module, second: nn.Module, seq_name: str = 'layers'):
+    def __init__(self, first: nn.Module, second: nn.Module, bounds: Bounds, seq_name: str = 'layers'):
+        """bounds are then used by the LP solver;
+        seq_name is the name of the attribute where the nn.Sequential module is stored in both models"""
+
+        self.bounds = bounds
+
         # getattr(first, seq_name) is usually equivalent to first.layers
         layers_first = list(getattr(first, seq_name))
         layers_second = list(getattr(second, seq_name))

@@ -7,12 +7,15 @@ from torch.utils.data import Dataset
 import torchmetrics
 import appmax.quantization
 
+Bounds = tuple[float, float] | list[tuple[float, float]]
+
 
 @dataclass
 class DataSplit:
     train: Dataset
     dev: Dataset
     test: Dataset
+    bounds: Bounds
 
 
 class BaseModel(nn.Module):
