@@ -22,6 +22,8 @@ class SimpleNet(TrainableModel):
 
 
 class CaliforniaHousingDataset(torch.utils.data.Dataset):
+    """https://scikit-learn.org/stable/datasets/real_world.html#california-housing-dataset"""
+
     def __init__(self):
         data, target = sklearn.datasets.fetch_california_housing(data_home='datasets', return_X_y=True)
         self.data = torch.from_numpy(data).to(dtype=torch.get_default_dtype())
