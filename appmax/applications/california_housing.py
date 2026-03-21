@@ -38,5 +38,5 @@ class CaliforniaHousingSplit(DataSplit):
     def __init__(self):
         dataset = CaliforniaHousingDataset()
         self.train, self.dev, self.test = torch.utils.data.random_split(dataset, [6/8, 1/8, 1/8])
-        self.bounds = [(0.4999, 15.0), (1.0, 52.0), (0.8462, 141.91), (0.3333, 34.067),
-                       (3.0, 35682.0), (0.6923, 1243.3), (32.54, 41.95), (-124.35, -114.31)]
+        self.bounds = [(0.4, 15.0), (1.0, 52.0), (0.8, 142.0), (0.3, 34.1),
+                       (3.0, 35682.0), (0.6, 1243.4), (32.5, 42.0), (-124.4, -114.3)]
