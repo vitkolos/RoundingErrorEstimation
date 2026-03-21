@@ -1,12 +1,18 @@
 import torch
 import joblib
+import click
 
 from appmax.applications import california_housing, mnist
 import appmax.evaluation
 import appmax.experiment
 
 
-def main():
+@click.command()
+@click.argument('dataset')
+@click.argument('run-id', default='1')
+@click.option('--train', is_flag=True)
+@click.option('-b', '--bits', default=8)
+def main(dataset, run_id, train, bits):
     """
     1) prepare a dataset
     2) train (or provide) a network
@@ -21,20 +27,26 @@ def main():
     input: original network, approximated network, data samples
     output: reported errors (single sample × polytope; maximum × average)
     """
+
     torch.manual_seed(42)
-    if True:
-        MODEL_FILE = "models/california_housing_simple_net.pt"
-        MODEL_CLASS = california_housing.SimpleNet
-        data_split = california_housing.CaliforniaHousingSplit()
-    else:
-        # MODEL_FILE = "models/mnist_small_dense.pt"
-        # MODEL_CLASS = mnist.SmallDenseNet
-        MODEL_FILE = "models/mnist_dense_net.pt"
-        MODEL_CLASS = mnist.SmallDenseNetLegacy
-        data_split = mnist.MnistSplit()
+    seq_name = 'layers'
+
+    match dataset:
+        case 'california':
+            MODEL_FILE = "models/california_housing_simple_net.pt"
+            MODEL_CLASS = california_housing.SimpleNet
+            data_split = california_housing.CaliforniaHousingSplit()
+        case 'mnist':
+            # MODEL_FILE = "models/mnist_small_dense.pt"
+            # MODEL_CLASS = mnist.SmallDenseNet
+            MODEL_FILE = "models/mnist_dense_net.pt"
+            MODEL_CLASS = mnist.SmallDenseNetLegacy
+            data_split = mnist.MnistSplit()
+            seq_name = 'network'
+
     model = MODEL_CLASS()
 
-    if False:
+    if train:
         device = torch.accelerator.current_accelerator().type if torch.accelerator.is_available() else "cpu"
         model.to(device)
         model.fit(data_split.train, data_split.dev)
@@ -44,19 +56,19 @@ def main():
         model.load(MODEL_FILE).eval()
         model_approx = MODEL_CLASS()
         model_approx.load(MODEL_FILE).eval()
-        model_approx.round(bits=8)
+        model_approx.round(bits=bits)
 
         # loader_dev = torch.utils.data.DataLoader(data_split.dev, batch_size=64)
         # print('metric', model.evaluate(loader_dev), model_approx.evaluate(loader_dev))
 
-        eval_net = appmax.evaluation.EvaluationNet(model, model_approx, data_split.bounds, seq_name='layers').eval()
+        eval_net = appmax.evaluation.EvaluationNet(model, model_approx, data_split.bounds, seq_name=seq_name).eval()
 
         # input_sample = data_split.test[0][0]
         # result = appmax.experiment.step('', 0, eval_net, input_sample)
         # print('errors', result['error_sample'], result['error_nearby'])
 
         with joblib.parallel_config(backend='threading', n_jobs=-1):
-            appmax.experiment.run('experiments/california', '2', eval_net, data_split.test, first_k=10)
+            appmax.experiment.run(f'experiments/{dataset}', run_id, eval_net, data_split.test, first_k=10)
 
 
 if __name__ == '__main__':
