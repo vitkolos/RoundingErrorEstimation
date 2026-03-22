@@ -16,9 +16,10 @@ def run(
     samples: list,
     first_k: int | None = None,
     use_memory: bool = True,
+    show_tensors: bool = False
 ):
     # prepare dataset
-    def get_sample(i): return samples[i][0]
+    def get_sample(i): return samples[i][0].clone()  # clone to break connection with Storage
     total_length = len(samples)
 
     if first_k is not None and first_k > 0:
@@ -51,6 +52,15 @@ def run(
     input_nearby_stack = torch.stack(df['input_nearby'].to_list())
     torch.save(input_nearby_stack, experiment_path / f'{run_id}_tensors.pt')
 
+    if show_tensors:
+        def ten2strs(tensor):
+            return [f'{x:.2f}' for x in tensor.flatten().tolist()]
+
+        with open(experiment_path / f'{run_id}_tensors.tsv', 'w') as f:
+            for i, (tensor_sample, tensor_nearby) in df[['input_sample', 'input_nearby']].iterrows():
+                print(i, 'sample', *ten2strs(tensor_sample), sep='\t', file=f)
+                print(i, 'nearby', *ten2strs(tensor_nearby), sep='\t', file=f)
+
 
 def step(run_id: str, sample_index: int, eval_net: appmax.evaluation.EvaluationNet, input_sample: torch.Tensor):
     """function for parallel execution
@@ -65,6 +75,7 @@ def step(run_id: str, sample_index: int, eval_net: appmax.evaluation.EvaluationN
 
     return {
         'sample_index': sample_index,
+        'input_sample': input_sample,
         'error_sample': error_sample,
         'input_nearby': input_nearby,
         'error_nearby': error_nearby,
