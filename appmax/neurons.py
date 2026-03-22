@@ -57,6 +57,10 @@ def collect(module: nn.Module, message: Message, constraints: Constraints) -> Me
             return collect_relu(module, message, constraints)
         case nn.Linear():
             return collect_linear(module, message, constraints)
+        case nn.Conv2d():
+            return collect_conv2d(module, message, constraints)
+        case nn.MaxPool2d():
+            return collect_max_pool2d(module, message, constraints)
         case nn.Dropout():
             return message
         case nn.Flatten():
@@ -68,12 +72,13 @@ def collect(module: nn.Module, message: Message, constraints: Constraints) -> Me
 def collect_relu(relu: nn.ReLU, message: Message, constraints: Constraints) -> Message:
     message.sample = relu(message.sample)
     unsaturated = message.sample > 0
-    unsaturated_sq = unsaturated.squeeze()
+    unsaturated_sq = unsaturated.squeeze(0)
 
     # add constraints
-    constraints.U_weight.append(message.s_weight.t()[unsaturated_sq])
+    s_weight_T = message.s_weight.movedim(0, -1)
+    constraints.U_weight.append(s_weight_T[unsaturated_sq])
     constraints.U_bias.append(message.s_bias[unsaturated])
-    constraints.S_weight.append(message.s_weight.t()[~unsaturated_sq])
+    constraints.S_weight.append(s_weight_T[~unsaturated_sq])
     constraints.S_bias.append(message.s_bias[~unsaturated])
 
     # disable saturated neurons
@@ -91,5 +96,39 @@ def collect_linear(linear: nn.Linear, message: Message, constraints: Constraints
 
     # s_bias = s_bias @ weight.t() + bias
     message.s_bias = linear(message.s_bias)
+
+    return message
+
+
+def collect_conv2d(conv2d: nn.Conv2d, message: Message, constraints: Constraints) -> Message:
+    message.sample = conv2d(message.sample)
+    message.s_weight = conv2d._conv_forward(message.s_weight, conv2d.weight, None)
+    message.s_bias = conv2d(message.s_bias)
+    return message
+
+
+def collect_max_pool2d(max_pool2d: nn.MaxPool2d, message: Message, constraints: Constraints) -> Message:
+    message.sample, indices = torch.nn.functional.max_pool2d(
+        message.sample,
+        max_pool2d.kernel_size,
+        max_pool2d.stride,
+        max_pool2d.padding,
+        max_pool2d.dilation,
+        ceil_mode=max_pool2d.ceil_mode,
+        return_indices=True,
+    )
+
+    # add constraints
+    print('TODO: add constraints')
+
+    def batch_take(data, indices):
+        batch_size = data.shape[0]
+        batch_indices = indices.flatten(1).expand(batch_size, -1)
+        gathered = torch.gather(data.flatten(1), dim=1, index=batch_indices)
+        return gathered.reshape(batch_size, *indices.shape[1:])
+
+    # disable saturated neurons (take maxima)
+    message.s_weight = batch_take(message.s_weight, indices)
+    message.s_bias = torch.take(message.s_bias, indices)
 
     return message
