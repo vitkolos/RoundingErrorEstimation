@@ -2,7 +2,7 @@ import torch
 import joblib
 import click
 
-from appmax.applications import california_housing, mnist
+from appmax.applications import california_housing, mnist, energy_efficiency
 import appmax.evaluation
 import appmax.experiment
 
@@ -37,6 +37,10 @@ def main(dataset, run_id, train, bits, samples):
             MODEL_FILE = "models/california_housing_simple_net.pt"
             MODEL_CLASS = california_housing.SimpleNet
             data_split = california_housing.CaliforniaHousingSplit()
+        case 'energy':
+            MODEL_FILE = "models/energy_efficiency_simple_net.pt"
+            MODEL_CLASS = energy_efficiency.SimpleNet
+            data_split = energy_efficiency.EnergyEfficiencySplit()
         case 'mnist':
             # MODEL_FILE = "models/mnist_new_dense.pt"
             # MODEL_CLASS = mnist.SmallDenseNet
@@ -49,6 +53,8 @@ def main(dataset, run_id, train, bits, samples):
             MODEL_CLASS = mnist.SmallConvNetLegacy
             data_split = mnist.MnistSplit()
             seq_name = 'network'
+        case _:
+            raise NotImplementedError(f"'{dataset}' dataset is not available")
 
     model = MODEL_CLASS()
 
