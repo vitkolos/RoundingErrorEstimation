@@ -16,7 +16,6 @@ def run(
     samples: list,
     first_k: int | None = None,
     use_memory: bool = True,
-    show_tensors: bool = False
 ):
     # prepare dataset
     def get_sample(i): return samples[i][0]
@@ -52,10 +51,6 @@ def run(
     input_nearby_stack = torch.stack(df['input_nearby'].to_list())
     torch.save(input_nearby_stack, experiment_path / f'{run_id}_tensors.pt')
 
-    if show_tensors:
-        df_tensors = df[['input_sample', 'input_nearby']].map(torch.Tensor.tolist)
-        df_tensors.to_csv(experiment_path / f'{run_id}_tensors.csv')
-
 
 def step(run_id: str, sample_index: int, eval_net: appmax.evaluation.EvaluationNet, input_sample: torch.Tensor):
     """function for parallel execution
@@ -70,7 +65,6 @@ def step(run_id: str, sample_index: int, eval_net: appmax.evaluation.EvaluationN
 
     return {
         'sample_index': sample_index,
-        'input_sample': input_sample,
         'error_sample': error_sample,
         'input_nearby': input_nearby,
         'error_nearby': error_nearby,
