@@ -71,7 +71,7 @@ def step(run_id: str, sample_index: int, eval_net: appmax.evaluation.EvaluationN
     with torch.no_grad():
         error_sample = eval_net(input_sample_b).item()
 
-    input_nearby, error_nearby = appmax.optimize.find_appmax(eval_net, input_sample, verbose=False)
+    input_nearby, error_nearby = appmax.optimize.find_appmax(eval_net, input_sample, verbose=False, check=False)
 
     return {
         'sample_index': sample_index,

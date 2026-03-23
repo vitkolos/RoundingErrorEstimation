@@ -78,13 +78,14 @@ def check_feasibility(sample: torch.Tensor, A_ub: torch.Tensor, b_ub: torch.Tens
         infeasible = True
         print(f'indices {too_high} > upper bounds')
 
-    infeasible_rows = torch.nonzero(A_ub @ sample_flat > b_ub).flatten()
+    left_side = A_ub @ sample_flat
+    infeasible_rows = torch.nonzero(left_side > b_ub).flatten()
 
     if len(infeasible_rows) > 0:
         infeasible = True
 
         for i in infeasible_rows:
-            print('infeasible constraint', A_ub[i], '@ x <=', b_ub[i])
+            print(f'infeasible constraint {i}: {left_side[i].item():.2f} <= {b_ub[i].item():.2f}')
 
     if infeasible:
         raise RuntimeError(f'infeasible (check the output above); input tensor:\n{sample}')
