@@ -4,6 +4,7 @@ import warnings
 
 import torch
 from torch import nn
+import torch.nn.functional as F
 import appmax.evaluation
 
 
@@ -100,7 +101,7 @@ def collect_linear(linear: nn.Linear, message: Message, constraints: Constraints
     message.sample = linear(message.sample)
 
     # s_weight = s_weight @ weight.t()
-    message.s_weight = torch.nn.functional.linear(message.s_weight, linear.weight, None)
+    message.s_weight = F.linear(message.s_weight, linear.weight, None)
 
     # s_bias = s_bias @ weight.t() + bias
     message.s_bias = linear(message.s_bias)
@@ -124,21 +125,49 @@ def batch_channels_take(data: torch.Tensor, indices: torch.Tensor) -> torch.Tens
 
 
 def collect_max_pool2d(max_pool2d: nn.MaxPool2d, message: Message, constraints: Constraints) -> Message:
-    message.sample, indices = torch.nn.functional.max_pool2d(
+    if max_pool2d.ceil_mode:
+        raise NotImplementedError('collect_max_pool2d does not support ceil_mode=True')
+
+    _, C, M, N = message.sample.shape
+    message.sample, indices_max = F.max_pool2d(
         message.sample,
         max_pool2d.kernel_size,
         max_pool2d.stride,
         max_pool2d.padding,
         max_pool2d.dilation,
-        ceil_mode=max_pool2d.ceil_mode,
         return_indices=True,
     )
 
     # add constraints
-    print('TODO: add constraints')
+    # s_weight_T[channel, pixel, input]
+    s_weight_T = message.s_weight.movedim(0, -1).flatten(1, 2)
+    # s_bias_sq[channel, pixel]
+    s_bias_sq = message.s_bias.reshape(C, -1)
+    # indices_all[(singleton), window, cell]
+    indices_all = F.unfold(
+        torch.arange(M*N).reshape(1, 1, M, N).float(),
+        kernel_size=max_pool2d.kernel_size,
+        stride=max_pool2d.stride,
+        padding=max_pool2d.padding,
+        dilation=max_pool2d.dilation,
+    ).long().movedim(1, -1)
+    window_cells = indices_all.shape[-1]
+    # indices_all_sq[channel, pixel]
+    indices_all_sq = indices_all.flatten().repeat(C)
+    # indices_max_sq[channel, pixel]
+    indices_max_sq = indices_max.flatten().repeat_interleave(window_cells, dim=-1)
+    useful = indices_max_sq != indices_all_sq
+    # flat tensors
+    indices_max_sq = indices_max_sq[useful]
+    indices_all_sq = indices_all_sq[useful]
+    channels = torch.arange(C).repeat_interleave(indices_max_sq.shape[0] // C)
+    # other + o_bias <= max + m_bias
+    # other-max + ob-mb <= 0 (saturated constraint)
+    constraints.S_weight.append(s_weight_T[channels, indices_all_sq] - s_weight_T[channels, indices_max_sq])
+    constraints.S_bias.append(s_bias_sq[channels, indices_all_sq] - s_bias_sq[channels, indices_max_sq])
 
     # disable saturated neurons (take maxima)
-    message.s_weight = batch_channels_take(message.s_weight, indices)
-    message.s_bias = batch_channels_take(message.s_bias, indices)
+    message.s_weight = batch_channels_take(message.s_weight, indices_max)
+    message.s_bias = batch_channels_take(message.s_bias, indices_max)
 
     return message
