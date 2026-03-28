@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+
 import appmax.trainable
 import appmax.neurons
 
@@ -147,7 +148,6 @@ def test_conv_pure_neurons_random():
 
 class DummyNetMaxPool(appmax.trainable.TrainableModel):
     def __init__(self):
-        """relies on a random initialization of parameters"""
         super().__init__(
             nn.Sequential(
                 nn.MaxPool2d(3, 2),

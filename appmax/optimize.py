@@ -22,25 +22,27 @@ def find_appmax(eval_net: appmax.evaluation.EvaluationNet, sample: torch.Tensor,
 
 def prepare_lp(message: appmax.neurons.Message, constraints: appmax.neurons.Constraints) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
     TOL = 0  # 1e-8
-
-    # objective to minimize
-    objective = -message.s_weight
+    A_ub = []
+    b_ub = []
 
     # (U)  Ax + b >= 0
     #         -Ax <= b
-    U_weight = -torch.cat(constraints.U_weight)
-    U_bias = torch.cat(constraints.U_bias) + TOL
+    if constraints.U_weight:
+        A_ub.append(-torch.cat(constraints.U_weight))
+        b_ub.append(torch.cat(constraints.U_bias) + TOL)
 
     # (S)  Ax + b <= 0
     #          Ax <= -b
-    S_weight = torch.cat(constraints.S_weight)
-    S_bias = -torch.cat(constraints.S_bias) + TOL
+    if constraints.S_weight:
+        A_ub.append(torch.cat(constraints.S_weight))
+        b_ub.append(-torch.cat(constraints.S_bias) + TOL)
 
+    # objective to minimize
+    objective = -message.s_weight
     c = objective.squeeze()
     bias = message.s_bias
-    A_ub = torch.cat((U_weight, S_weight))
-    b_ub = torch.cat((U_bias, S_bias))
-    return c, bias, A_ub, b_ub
+
+    return c, bias, torch.cat(A_ub), torch.cat(b_ub)
 
 
 def optimize(c: torch.Tensor, bias: torch.Tensor, A_ub: torch.Tensor, b_ub: torch.Tensor, bounds: Bounds, verbose: bool) -> tuple[torch.Tensor, float]:
