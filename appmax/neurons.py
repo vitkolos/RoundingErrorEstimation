@@ -138,7 +138,7 @@ def collect_max_pool2d(max_pool2d: nn.MaxPool2d, message: Message, constraints: 
         return_indices=True,
     )
 
-    # add constraints
+    # add constraints (we require that every non-maximum is less than the maximum)
     # s_weight_T[channel, pixel, input]
     s_weight_T = message.s_weight.movedim(0, -1).flatten(1, 2)
     # s_bias_sq[channel, pixel]
