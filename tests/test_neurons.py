@@ -87,3 +87,59 @@ def test_deeper_constraints():
         'weights corresponding to the (unsaturated) neuron H2.1 should be (1.0 + 0.5, 1.0 - 0.5)'
     assert torch.equal(constraints.U_bias[1][0], torch.tensor(0.75)), \
         'bias corresponding to the (unsaturated) neuron H2.1 should be 0.5 + 0.25'
+
+
+class DummyNetFC(appmax.trainable.TrainableModel):
+    def __init__(self):
+        """relies on a random initialization of parameters"""
+        super().__init__(
+            nn.Sequential(
+                nn.Linear(8, 24),
+                nn.ReLU(),
+                nn.Dropout(0.2),
+                nn.LazyLinear(48),
+                nn.ReLU(),
+                nn.Dropout(0.2),
+                nn.LazyLinear(61),
+                nn.ReLU(),
+                nn.Dropout(0.2),
+                nn.LazyLinear(3),
+            )
+        )
+
+
+def test_fc_neurons_random():
+    net = DummyNetFC().eval()
+    sample = torch.testing.make_tensor(8, dtype=torch.float32, device='cpu', low=0.0, high=2.0)
+    constraints = appmax.neurons.Constraints()
+    message = appmax.neurons.Message(sample)
+    message = appmax.neurons.collect(net.layers, message, constraints)
+    output = sample @ message.s_weight + message.s_bias
+    torch.testing.assert_close(output, net(sample.unsqueeze(0)))
+    torch.testing.assert_close(output, message.sample)
+
+
+class DummyNetConvPure(appmax.trainable.TrainableModel):
+    def __init__(self):
+        """relies on a random initialization of parameters"""
+        super().__init__(
+            nn.Sequential(
+                nn.Conv2d(1, 32, kernel_size=3, padding=1),
+                nn.ReLU(),
+                nn.LazyConv2d(64, kernel_size=3, stride=1, padding=1),
+                nn.ReLU(),
+                nn.LazyConv2d(2, kernel_size=3),
+                nn.Flatten(),
+            )
+        )
+
+
+def test_conv_pure_neurons_random():
+    net = DummyNetConvPure().eval()
+    sample = torch.testing.make_tensor((1, 16, 16), dtype=torch.float32, device='cpu', low=-1.0, high=2.0)
+    constraints = appmax.neurons.Constraints()
+    message = appmax.neurons.Message(sample)
+    message = appmax.neurons.collect(net.layers, message, constraints)
+    output = sample.flatten(1) @ message.s_weight + message.s_bias
+    torch.testing.assert_close(output, net(sample.unsqueeze(0)))
+    torch.testing.assert_close(output, message.sample)

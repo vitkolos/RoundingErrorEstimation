@@ -1,5 +1,7 @@
 from dataclasses import dataclass, field
 import copy
+import warnings
+
 import torch
 from torch import nn
 import appmax.evaluation
@@ -62,6 +64,8 @@ def collect(module: nn.Module, message: Message, constraints: Constraints) -> Me
         case nn.MaxPool2d():
             return collect_max_pool2d(module, message, constraints)
         case nn.Dropout():
+            if module.training:
+                warnings.warn('Dropout layer is in training mode')
             return message
         case nn.Flatten():
             return message.apply(module)
