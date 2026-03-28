@@ -156,6 +156,7 @@ class DummyNetMaxPool(appmax.trainable.TrainableModel):
             )
         )
 
+
 def test_max_pool_neurons_random():
     net = DummyNetMaxPool().eval()
     sample = torch.testing.make_tensor((1, 32, 32), dtype=torch.float32, device='cpu', low=-1.0, high=2.0)
@@ -165,3 +166,9 @@ def test_max_pool_neurons_random():
     output = sample.flatten(1) @ message.s_weight + message.s_bias
     torch.testing.assert_close(output, net(sample.unsqueeze(0)))
     torch.testing.assert_close(output, message.sample)
+
+
+def test_max_pool_batch_take():
+    sample_old = torch.testing.make_tensor((5, 3, 32, 32), dtype=torch.float32, device='cpu', low=-1.0, high=2.0)
+    sample_new, indices = torch.nn.functional.max_pool2d(sample_old, 2, return_indices=True)
+    torch.testing.assert_close(sample_new, appmax.neurons.batch_channels_take(sample_old, indices))

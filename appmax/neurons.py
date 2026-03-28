@@ -115,6 +115,14 @@ def collect_conv2d(conv2d: nn.Conv2d, message: Message, constraints: Constraints
     return message
 
 
+def batch_channels_take(data: torch.Tensor, indices: torch.Tensor) -> torch.Tensor:
+    batch_size = data.shape[0]
+    channels = data.shape[1]
+    batch_indices = indices.flatten(2).expand(batch_size, -1, -1)
+    gathered = torch.gather(data.flatten(2), dim=2, index=batch_indices)
+    return gathered.reshape(batch_size, channels, *indices.shape[2:])
+
+
 def collect_max_pool2d(max_pool2d: nn.MaxPool2d, message: Message, constraints: Constraints) -> Message:
     message.sample, indices = torch.nn.functional.max_pool2d(
         message.sample,
@@ -125,17 +133,9 @@ def collect_max_pool2d(max_pool2d: nn.MaxPool2d, message: Message, constraints: 
         ceil_mode=max_pool2d.ceil_mode,
         return_indices=True,
     )
-    # TODO: add test "sample_new should equal batch_channels_take(sample_old, indices)"
 
     # add constraints
     print('TODO: add constraints')
-
-    def batch_channels_take(data: torch.Tensor, indices: torch.Tensor) -> torch.Tensor:
-        batch_size = data.shape[0]
-        channels = data.shape[1]
-        batch_indices = indices.flatten(2).expand(batch_size, -1, -1)
-        gathered = torch.gather(data.flatten(2), dim=2, index=batch_indices)
-        return gathered.reshape(batch_size, channels, *indices.shape[2:])
 
     # disable saturated neurons (take maxima)
     message.s_weight = batch_channels_take(message.s_weight, indices)
