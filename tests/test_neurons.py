@@ -143,3 +143,25 @@ def test_conv_pure_neurons_random():
     output = sample.flatten(1) @ message.s_weight + message.s_bias
     torch.testing.assert_close(output, net(sample.unsqueeze(0)))
     torch.testing.assert_close(output, message.sample)
+
+
+class DummyNetMaxPool(appmax.trainable.TrainableModel):
+    def __init__(self):
+        """relies on a random initialization of parameters"""
+        super().__init__(
+            nn.Sequential(
+                nn.MaxPool2d(3, 2),
+                nn.MaxPool2d((3, 2), (2, 1)),
+                nn.Flatten(),
+            )
+        )
+
+def test_max_pool_neurons_random():
+    net = DummyNetMaxPool().eval()
+    sample = torch.testing.make_tensor((1, 32, 32), dtype=torch.float32, device='cpu', low=-1.0, high=2.0)
+    constraints = appmax.neurons.Constraints()
+    message = appmax.neurons.Message(sample)
+    message = appmax.neurons.collect(net.layers, message, constraints)
+    output = sample.flatten(1) @ message.s_weight + message.s_bias
+    torch.testing.assert_close(output, net(sample.unsqueeze(0)))
+    torch.testing.assert_close(output, message.sample)

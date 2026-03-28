@@ -74,9 +74,13 @@ def collect(module: nn.Module, message: Message, constraints: Constraints) -> Me
 
 
 def collect_relu(relu: nn.ReLU, message: Message, constraints: Constraints) -> Message:
-    message.sample = relu(message.sample)
-    unsaturated = message.sample > 0
+    # find unsaturated neurons
+    unsaturated = message.sample >= 0
+    # - non-strict inequality ensures that the unsaturated set stays the same for all the samples in the polytope
+    # - strict inequality would cause smaller unsaturated set for samples from some of the edges of the polytope
+    #   -> it would be possible to "move" from one polytope to another (but only in one direction)
     unsaturated_sq = unsaturated.squeeze(0)
+    message.sample = relu(message.sample)
 
     # add constraints
     s_weight_T = message.s_weight.movedim(0, -1)
