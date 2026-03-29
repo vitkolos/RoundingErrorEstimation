@@ -64,7 +64,7 @@ def optimize(c: torch.Tensor, bias: torch.Tensor, A_ub: torch.Tensor, b_ub: torc
     return found_x, found_maximum
 
 
-def check_feasibility(sample: torch.Tensor, A_ub: torch.Tensor, b_ub: torch.Tensor, bounds: Bounds):
+def check_feasibility(sample: torch.Tensor, A_ub: torch.Tensor, b_ub: torch.Tensor, bounds: Bounds, abs_tol: float = 0.0):
     infeasible = False
     sample_flat = sample.flatten()
 
@@ -81,7 +81,7 @@ def check_feasibility(sample: torch.Tensor, A_ub: torch.Tensor, b_ub: torch.Tens
         print(f'indices {too_high} > upper bounds')
 
     left_side = A_ub @ sample_flat
-    infeasible_rows = torch.nonzero(left_side > b_ub).flatten()
+    infeasible_rows = torch.nonzero(left_side > b_ub + abs_tol).flatten()
 
     if len(infeasible_rows) > 0:
         infeasible = True

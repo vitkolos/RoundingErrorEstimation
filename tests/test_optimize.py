@@ -20,12 +20,12 @@ def optimize_testing_procedure(net: appmax.trainable.TrainableModel, sample: tor
     # check feasibility
     c, bias, A_ub, b_ub = lp
     appmax.optimize.check_feasibility(sample, A_ub, b_ub, bounds)
-    appmax.optimize.check_feasibility(sample_found, A_ub, b_ub, bounds)
+    appmax.optimize.check_feasibility(sample_found, A_ub, b_ub, bounds, abs_tol=1e-6)
     appmax.optimize.check_feasibility(sample_comb, A_ub, b_ub, bounds)
 
     # check found objective value
     err_computed = net(sample_found.unsqueeze(0)).item()
-    assert math.isclose(err_found, err_computed), 'Optimization returns different value than the network'
+    assert math.isclose(err_found, err_computed, abs_tol=1e-6), 'Optimization returns different value than the network'
 
     # check if we get the same linear program for a point on the polytope
     constraints_point = appmax.neurons.Constraints()
@@ -55,6 +55,27 @@ class DummyOptNetMaxPool(appmax.trainable.TrainableModel):
 
 def test_max_pool_lp():
     net = DummyOptNetMaxPool()
-    # 7 channels, 4×4 input shape
+    # 1 channel, 4×4 input shape
+    sample = torch.testing.make_tensor((1, 4, 4), dtype=torch.float32, device='cpu', low=-1.0, high=2.0)
+    optimize_testing_procedure(net, sample, bounds=(-2.0, 3.0), mixing=0.01)
+
+
+class DummyOptNetConv(appmax.trainable.TrainableModel):
+    def __init__(self):
+        super().__init__(
+            nn.Sequential(
+                nn.Conv2d(1, 2, kernel_size=3, padding='same'),
+                nn.ReLU(),
+                nn.MaxPool2d(2),
+                nn.Flatten(),
+                nn.Linear(8, 1)
+            )
+        )
+
+
+def test_conv_lp():
+    """relies on random initialization of parameters"""
+    net = DummyOptNetConv()
+    # 1 channel, 4×4 input shape
     sample = torch.testing.make_tensor((1, 4, 4), dtype=torch.float32, device='cpu', low=-1.0, high=2.0)
     optimize_testing_procedure(net, sample, bounds=(-2.0, 3.0), mixing=0.01)

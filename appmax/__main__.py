@@ -76,7 +76,7 @@ def main(dataset, run_id, train, bits, samples):
         eval_net = appmax.evaluation.EvaluationNet(model, model_approx, data_split.bounds, seq_name=seq_name).eval()
 
         input_sample = data_split.test[0][0]
-        result = appmax.experiment.step('', 0, eval_net, input_sample)
+        result = appmax.experiment.step('', 0, eval_net, input_sample, verbose=True)
         print('errors', result['error_sample'], result['error_nearby'])
 
         # with joblib.parallel_config(backend='threading', n_jobs=-1):

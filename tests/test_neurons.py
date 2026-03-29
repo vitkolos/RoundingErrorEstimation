@@ -92,7 +92,7 @@ def test_deeper_constraints():
 
 class DummyNetFC(appmax.trainable.TrainableModel):
     def __init__(self):
-        """relies on a random initialization of parameters"""
+        """relies on random initialization of parameters"""
         super().__init__(
             nn.Sequential(
                 nn.Linear(8, 24),
@@ -122,7 +122,7 @@ def test_fc_neurons_random():
 
 class DummyNetConvPure(appmax.trainable.TrainableModel):
     def __init__(self):
-        """relies on a random initialization of parameters"""
+        """relies on random initialization of parameters"""
         super().__init__(
             nn.Sequential(
                 nn.Conv2d(1, 32, kernel_size=3, padding=1),

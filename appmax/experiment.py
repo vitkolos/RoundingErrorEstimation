@@ -35,7 +35,7 @@ def run(
     wrapped_step = step
     if use_memory:
         memory = joblib.Memory(experiment_path / 'memory', verbose=0)
-        wrapped_step = memory.cache(wrapped_step, ignore=['eval_net', 'input_sample'])
+        wrapped_step = memory.cache(wrapped_step, ignore=['eval_net', 'input_sample', 'verbose'])
 
     # setup generators
     wrapped_step = joblib.delayed(wrapped_step)
@@ -62,7 +62,7 @@ def run(
                 print(i, 'nearby', *ten2strs(tensor_nearby), sep='\t', file=f)
 
 
-def step(run_id: str, sample_index: int, eval_net: appmax.evaluation.EvaluationNet, input_sample: torch.Tensor):
+def step(run_id: str, sample_index: int, eval_net: appmax.evaluation.EvaluationNet, input_sample: torch.Tensor, verbose: bool = False):
     """function for parallel execution
     (run_id and sample_index are used for caching, eval_net and input_sample are ignored)"""
 
@@ -71,7 +71,7 @@ def step(run_id: str, sample_index: int, eval_net: appmax.evaluation.EvaluationN
     with torch.no_grad():
         error_sample = eval_net(input_sample_b).item()
 
-    input_nearby, error_nearby = appmax.optimize.find_appmax(eval_net, input_sample, verbose=False, check=False)
+    input_nearby, error_nearby = appmax.optimize.find_appmax(eval_net, input_sample, verbose, check=False)
 
     return {
         'sample_index': sample_index,
