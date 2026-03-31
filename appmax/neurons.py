@@ -45,7 +45,8 @@ class Constraints:
 
 @torch.no_grad()
 def collect(module: nn.Module, message: Message, constraints: Constraints) -> Message:
-    """passes message through the module and collects necessary information"""
+    """passes message through the module and collects necessary information;
+    note that the message is modified **in place**"""
     match module:
         case appmax.evaluation.DualStreamModel():
             message2 = copy.deepcopy(message)
