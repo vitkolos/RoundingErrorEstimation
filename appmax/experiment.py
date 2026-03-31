@@ -7,6 +7,7 @@ import tqdm
 
 import appmax.evaluation
 import appmax.optimize
+from appmax.optimize import SOLVER_DEFAULT
 
 
 def run(
@@ -35,7 +36,7 @@ def run(
     wrapped_step = step
     if use_memory:
         memory = joblib.Memory(experiment_path / 'memory', verbose=0)
-        wrapped_step = memory.cache(wrapped_step, ignore=['eval_net', 'input_sample', 'debug'])
+        wrapped_step = memory.cache(wrapped_step, ignore=['eval_net', 'input_sample'])
 
     # setup generators
     wrapped_step = joblib.delayed(wrapped_step)
@@ -62,19 +63,23 @@ def run(
                 print(i, 'nearby', *ten2strs(tensor_nearby), sep='\t', file=f)
 
 
-def step(run_id: str, sample_index: int, eval_net: appmax.evaluation.EvaluationNet, input_sample: torch.Tensor, debug: bool = False):
+def step(run_id: str, sample_index: int, eval_net: appmax.evaluation.EvaluationNet, input_sample: torch.Tensor) -> dict:
     """function for parallel execution
     (run_id and sample_index are used for caching, eval_net and input_sample are ignored)"""
+    result = single(eval_net, input_sample)
+    result['sample_index'] = sample_index
+    return result
 
+
+def single(eval_net: appmax.evaluation.EvaluationNet, input_sample: torch.Tensor, solver: str = SOLVER_DEFAULT, debug: bool = False) -> dict:
     input_sample_b = input_sample.unsqueeze(0)  # sample -> batch (to support any PyTorch network)
 
     with torch.no_grad():
         error_sample = eval_net(input_sample_b).item()
 
-    input_nearby, error_nearby = appmax.optimize.find_appmax(eval_net, input_sample, debug=debug)
+    input_nearby, error_nearby = appmax.optimize.find_appmax(eval_net, input_sample, solver, debug=debug)
 
     return {
-        'sample_index': sample_index,
         'input_sample': input_sample,
         'error_sample': error_sample,
         'input_nearby': input_nearby,

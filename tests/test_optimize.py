@@ -14,7 +14,7 @@ def optimize_testing_procedure(net: appmax.trainable.TrainableModel, sample: tor
     message = appmax.neurons.Message(sample)
     message = appmax.neurons.collect(net.layers, message, constraints)
     lp = appmax.optimize.prepare_lp(message, constraints)
-    sample_found, err_found = appmax.optimize.optimize(*lp, bounds, verbose=False)
+    sample_found, err_found = appmax.optimize.optimize(lp, bounds)
     sample_found = sample_found.reshape_as(sample)
     sample_comb = (1-mixing)*sample_found + mixing*sample
 

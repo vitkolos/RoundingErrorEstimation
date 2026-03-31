@@ -12,8 +12,9 @@ import appmax.experiment
 @click.argument('run-id', default='run')
 @click.option('--train', is_flag=True)
 @click.option('-b', '--bits', default=8)
+@click.option('-s', '--solver', default=appmax.experiment.SOLVER_DEFAULT)
 @click.option('-n', 'samples', default=-1)
-def main(dataset, run_id, train, bits, samples):
+def main(dataset, run_id, train, bits, solver, samples):
     """
     1) prepare a dataset
     2) train (or provide) a network
@@ -76,8 +77,10 @@ def main(dataset, run_id, train, bits, samples):
         eval_net = appmax.evaluation.EvaluationNet(model, model_approx, data_split.bounds, seq_name=seq_name).eval()
 
         input_sample = data_split.test[0][0]
-        result = appmax.experiment.step('', 0, eval_net, input_sample, debug=True)
+        result = appmax.experiment.single(eval_net, input_sample, solver, debug=True)
         print('errors', result['error_sample'], result['error_nearby'])
+        print('reference')
+        print('errors 0.6520774364471436 0.7007212460728052')
 
         # loader_test = torch.utils.data.DataLoader(data_split.test, batch_size=64)
         # max, avg = appmax.evaluation.compute_error_aggregate(model, model_approx, loader_test)

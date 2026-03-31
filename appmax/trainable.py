@@ -9,6 +9,10 @@ import appmax.quantization
 Bounds = tuple[float, float] | list[tuple[float, float]]
 
 
+def bounds2list(bounds: Bounds, length: int):
+    return [bounds] * length if isinstance(bounds[0], float) else bounds
+
+
 @dataclass
 class DataSplit:
     train: Dataset
