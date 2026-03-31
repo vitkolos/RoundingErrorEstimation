@@ -6,17 +6,17 @@ import appmax.evaluation
 from appmax.trainable import Bounds
 
 
-def find_appmax(eval_net: appmax.evaluation.EvaluationNet, sample: torch.Tensor, verbose: bool = True, check: bool = False) -> tuple[torch.Tensor, float]:
+def find_appmax(eval_net: appmax.evaluation.EvaluationNet, sample: torch.Tensor, debug: bool = False) -> tuple[torch.Tensor, float]:
     """'sample' needs to be a single sample (not a batch)"""
     constraints = appmax.neurons.Constraints()
     message = appmax.neurons.Message(sample)
     message = appmax.neurons.collect(eval_net, message, constraints)
     c, bias, A_ub, b_ub = prepare_lp(message, constraints)
 
-    if check:
+    if debug:
         check_feasibility(sample, A_ub, b_ub, eval_net.bounds)
 
-    sample_found, err_found = optimize(c, bias, A_ub, b_ub, eval_net.bounds, verbose)
+    sample_found, err_found = optimize(c, bias, A_ub, b_ub, eval_net.bounds, verbose=debug)
     return sample_found.reshape_as(sample), err_found
 
 

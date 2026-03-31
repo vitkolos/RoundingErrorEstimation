@@ -40,6 +40,7 @@ class Constraints:
     U_bias: list[torch.Tensor] = field(default_factory=list)
     S_weight: list[torch.Tensor] = field(default_factory=list)
     S_bias: list[torch.Tensor] = field(default_factory=list)
+    neuron_states: list[torch.Tensor] | None = None
 
 
 @torch.no_grad()
@@ -93,6 +94,10 @@ def collect_relu(relu: nn.ReLU, message: Message, constraints: Constraints) -> M
     # disable saturated neurons
     message.s_weight *= unsaturated
     message.s_bias *= unsaturated
+
+    # log states of neurons
+    if constraints.neuron_states is not None:
+        constraints.neuron_states.append(unsaturated_sq)
 
     return message
 
@@ -169,5 +174,9 @@ def collect_max_pool2d(max_pool2d: nn.MaxPool2d, message: Message, constraints: 
     # disable saturated neurons (take maxima)
     message.s_weight = batch_channels_take(message.s_weight, indices_max)
     message.s_bias = batch_channels_take(message.s_bias, indices_max)
+
+    # log states of neurons
+    if constraints.neuron_states is not None:
+        constraints.neuron_states.append(indices_max)
 
     return message

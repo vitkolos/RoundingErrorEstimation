@@ -10,6 +10,7 @@ import tests.test_neurons
 
 def optimize_testing_procedure(net: appmax.trainable.TrainableModel, sample: torch.Tensor, bounds: appmax.trainable.Bounds, mixing: float = 0.0):
     constraints = appmax.neurons.Constraints()
+    constraints.neuron_states = []
     message = appmax.neurons.Message(sample)
     message = appmax.neurons.collect(net.layers, message, constraints)
     lp = appmax.optimize.prepare_lp(message, constraints)
@@ -29,9 +30,13 @@ def optimize_testing_procedure(net: appmax.trainable.TrainableModel, sample: tor
 
     # check if we get the same linear program for a point on the polytope
     constraints_point = appmax.neurons.Constraints()
+    constraints_point.neuron_states = []
     message_point = appmax.neurons.Message(sample_comb)
     message_point = appmax.neurons.collect(net.layers, message_point, constraints_point)
     lp_point = appmax.optimize.prepare_lp(message_point, constraints_point)
+
+    for t1, t2 in zip(constraints.neuron_states, constraints_point.neuron_states):
+        torch.testing.assert_close(t1, t2, msg='States of neurons differ')
 
     for t1, t2 in zip(lp, lp_point):
         torch.testing.assert_close(t1, t2, msg='Linear programs differ')
