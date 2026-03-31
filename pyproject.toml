@@ -26,6 +26,9 @@ dev = [
     "types-tqdm>=4.67.3.20260303",
 ]
 
+[tool.setuptools]
+packages = ["appmax"]
+
 [tool.mypy]
 python_version = "3.13"
 warn_unused_configs = true
