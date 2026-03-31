@@ -79,8 +79,8 @@ def main(dataset, run_id, train, bits, solver, samples):
         input_sample = data_split.test[0][0]
         result = appmax.experiment.single(eval_net, input_sample, solver, debug=True)
         print('errors', result['error_sample'], result['error_nearby'])
-        print('reference')
-        print('errors 0.6520774364471436 0.7007212460728052')
+        # print('california reference\nerrors 0.6520774364471436 0.7007212460728052')
+        print('mnist-conv reference\nerrors 0.5852416753768921 0.6485908165661114')
 
         # loader_test = torch.utils.data.DataLoader(data_split.test, batch_size=64)
         # max, avg = appmax.evaluation.compute_error_aggregate(model, model_approx, loader_test)

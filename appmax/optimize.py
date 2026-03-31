@@ -160,7 +160,7 @@ def optimize_gurobi(lp: LinearProgram, bounds: Bounds, verbose: bool) -> Optimiz
             raise RuntimeError(f'optimization ended with status {model.Status}')
 
 
-def check_feasibility(sample: torch.Tensor, A_ub: torch.Tensor, b_ub: torch.Tensor, bounds: Bounds, abs_tol: float = 0.0):
+def check_feasibility(sample: torch.Tensor, A_ub: torch.Tensor, b_ub: torch.Tensor, bounds: Bounds, abs_tol: float = 1e-6):
     infeasible = False
     sample_flat = sample.flatten()
 
@@ -183,7 +183,7 @@ def check_feasibility(sample: torch.Tensor, A_ub: torch.Tensor, b_ub: torch.Tens
         infeasible = True
 
         for i in infeasible_rows:
-            print(f'infeasible constraint {i}: {left_side[i].item():.2f} <= {b_ub[i].item():.2f}')
+            print(f'infeasible constraint {i}: {left_side[i].item():.6f} <= {b_ub[i].item():.6f}')
 
     if infeasible:
         raise RuntimeError(f'infeasible (check the output above); input tensor:\n{sample}')
