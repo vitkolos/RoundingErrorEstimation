@@ -6,11 +6,12 @@ readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "click>=8.3.1",
+    "cuopt-cu12==26.2.* ; sys_platform == 'linux'",
     "gurobipy>=13.0.1",
     "joblib>=1.5.3",
     "openpyxl>=3.1.5",
     "ortools>=9.15.6755",
-    "pandas>=3.0.1",
+    "pandas<2.4.0",
     "scikit-learn>=1.8.0",
     "scipy>=1.17.1",
     "torch>=2.10.0",
@@ -30,6 +31,9 @@ dev = [
 
 [tool.setuptools]
 packages = ["appmax"]
+
+[[tool.uv.index]]
+url = "https://pypi.nvidia.com/"
 
 [tool.mypy]
 python_version = "3.13"
