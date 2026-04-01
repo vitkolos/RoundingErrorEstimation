@@ -11,6 +11,7 @@ from appmax.trainable import Bounds, bounds2list
 
 SOLVER_HIGHS = 'highs'
 SOLVER_GUROBI = 'gurobi'
+SOLVER_CUOPT = 'cuopt'
 SOLVER_DEFAULT = SOLVER_HIGHS
 
 
@@ -64,10 +65,14 @@ def prepare_lp(message: appmax.neurons.Message, constraints: appmax.neurons.Cons
 
 
 def optimize(lp: LinearProgram, bounds: Bounds, solver: str = SOLVER_DEFAULT, verbose: bool = False) -> OptimizationResult:
-    if solver == SOLVER_HIGHS:
+    solver_lower = solver.lower()
+
+    if solver_lower == SOLVER_HIGHS:
         return optimize_scipy(lp, bounds, verbose)
-    elif solver == SOLVER_GUROBI:
+    elif solver_lower == SOLVER_GUROBI:
         return optimize_gurobi(lp, bounds, verbose)
+    elif solver_lower == SOLVER_CUOPT:
+        return optimize_cuopt(lp, bounds, verbose)
     else:
         return optimize_ortools(lp, bounds, solver, verbose)
 
@@ -137,6 +142,43 @@ def optimize_ortools(lp: LinearProgram, bounds: Bounds, solver_name: str, verbos
 
     found_x = torch.tensor([var.solution_value() for var in vars])
     found_maximum = objective.Value() + lp.bias.item()
+    return OptimizationResult(found_x, found_maximum)
+
+
+def optimize_cuopt(lp: LinearProgram, bounds: Bounds, verbose: bool) -> OptimizationResult:
+    from cuopt.linear_programming import problem, solver, solver_settings
+
+    p = problem.Problem('AppMax')
+    num_constraints, num_variables = lp.A_ub.shape
+    bounds = bounds2list(bounds, num_variables)
+
+    vars = []
+    for j in range(num_variables):
+        lb, ub = bounds[j]
+        vars.append(p.addVariable(
+            lb if lb is not None else -solver.infinity(),
+            ub if ub is not None else solver.infinity(),
+        ))
+
+    b_ub = lp.b_ub.tolist()
+    for i in range(num_constraints):
+        nz = torch.nonzero(lp.A_ub[i]).squeeze()
+        active_vars = [vars[j] for j in nz.tolist()]
+        coeffs = lp.A_ub[i, nz].tolist()
+        expr = problem.LinearExpression(active_vars, coeffs, 0.0)
+        p.addConstraint(expr <= b_ub[i])
+
+    p.setObjective(problem.LinearExpression(vars, lp.objective.tolist(), 0.0), sense=problem.MAXIMIZE)
+
+    settings = solver_settings.SolverSettings()
+    settings.set_parameter(solver.solver_parameters.CUOPT_METHOD, solver_settings.SolverMethod.PDLP)
+    p.solve(settings)
+
+    if p.Status.name != 'Optimal':
+        raise RuntimeError(f'Problem status: {p.Status.name}')
+
+    found_x = torch.tensor([var.getValue() for var in vars])
+    found_maximum = p.ObjValue + lp.bias.item()
     return OptimizationResult(found_x, found_maximum)
 
 
