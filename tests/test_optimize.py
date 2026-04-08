@@ -21,10 +21,9 @@ def optimize_testing_procedure(net: nn.Module, sample: torch.Tensor, bounds: app
     sample_comb = (1-mixing)*sample_found + mixing*sample
 
     # check feasibility
-    c, bias, A_ub, b_ub = lp
-    appmax.optimize.check_feasibility(sample, A_ub, b_ub, bounds)
-    appmax.optimize.check_feasibility(sample_found, A_ub, b_ub, bounds)
-    appmax.optimize.check_feasibility(sample_comb, A_ub, b_ub, bounds)
+    appmax.optimize.check_feasibility(sample, lp.A_ub, lp.b_ub, bounds)
+    appmax.optimize.check_feasibility(sample_found, lp.A_ub, lp.b_ub, bounds)
+    appmax.optimize.check_feasibility(sample_comb, lp.A_ub, lp.b_ub, bounds)
 
     # check found objective value
     err_computed = net(sample_found.unsqueeze(0)).item()

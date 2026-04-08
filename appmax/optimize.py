@@ -16,10 +16,11 @@ SOLVER_DEFAULT = SOLVER_HIGHS
 
 
 class LinearProgram(NamedTuple):
-    objective: torch.Tensor
-    bias: torch.Tensor
     A_ub: torch.Tensor
     b_ub: torch.Tensor
+    objective: torch.Tensor
+    bias: float = 0.0
+    maximize: bool = True
 
 
 class OptimizationResult(NamedTuple):
@@ -38,6 +39,8 @@ def find_appmax(eval_net: appmax.evaluation.EvaluationNet, sample: torch.Tensor,
         check_feasibility(sample, lp.A_ub, lp.b_ub, eval_net.bounds)
 
     sample_found, err_found = optimize(lp, eval_net.bounds, solver, verbose=debug)
+    mw = mean_width(lp, eval_net.bounds, solver)
+    print(mw)
     return OptimizationResult(sample_found.reshape_as(sample), err_found)
 
 
@@ -59,9 +62,26 @@ def prepare_lp(message: appmax.neurons.Message, constraints: appmax.neurons.Cons
         b_ub.append(-torch.cat(constraints.S_bias) + TOL)
 
     objective = message.s_weight.squeeze()
-    bias = message.s_bias
+    bias = message.s_bias.item()
 
-    return LinearProgram(objective, bias, torch.cat(A_ub), torch.cat(b_ub))
+    return LinearProgram(torch.cat(A_ub), torch.cat(b_ub), objective, bias)
+
+
+def mean_width(polytope: LinearProgram, bounds: Bounds, solver: str, num_directions: int = 100):
+    # variables == dimensions
+    num_variables = polytope.objective.shape[0]
+    directions = torch.randn(num_directions, num_variables)
+    directions /= torch.linalg.vector_norm(directions, dim=1, keepdim=True)
+    widths_sum = 0.0
+
+    for direction in directions:
+        lp_min = LinearProgram(polytope.A_ub, polytope.b_ub, direction, maximize=False)
+        res_min = optimize(lp_min, bounds, solver)
+        lp_max = LinearProgram(polytope.A_ub, polytope.b_ub, direction, maximize=True)
+        res_max = optimize(lp_max, bounds, solver)
+        widths_sum += res_max.fun - res_min.fun
+
+    return widths_sum / num_directions
 
 
 def optimize(lp: LinearProgram, bounds: Bounds, solver: str = SOLVER_DEFAULT, verbose: bool = False) -> OptimizationResult:
@@ -79,7 +99,8 @@ def optimize(lp: LinearProgram, bounds: Bounds, solver: str = SOLVER_DEFAULT, ve
 
 def optimize_scipy(lp: LinearProgram, bounds: Bounds, verbose: bool) -> OptimizationResult:
     # we want to maximize the objective -> we minimize cx (for Ax <= b)
-    c = -lp.objective
+    sense = -1 if lp.maximize else 1
+    c = sense * lp.objective
     result = scipy.optimize.linprog(c.numpy(), lp.A_ub.numpy(), lp.b_ub.numpy(),
                                     bounds=bounds, options={'disp': verbose})
 
@@ -95,7 +116,7 @@ def optimize_scipy(lp: LinearProgram, bounds: Bounds, verbose: bool) -> Optimiza
         raise RuntimeError('result is empty')
 
     found_x = torch.from_numpy(result.x).to(dtype=torch.get_default_dtype())
-    found_maximum = -result.fun + lp.bias.item()
+    found_maximum = sense * result.fun + lp.bias
     return OptimizationResult(found_x, found_maximum)
 
 
@@ -129,7 +150,7 @@ def optimize_ortools(lp: LinearProgram, bounds: Bounds, solver_name: str, verbos
     objective = solver.Objective()
     for var, coef in zip(vars, lp.objective.tolist()):
         objective.SetCoefficient(var, coef)
-    objective.SetMaximization()
+    objective.SetOptimizationDirection(lp.maximize)
 
     print(f"Solving with {solver.SolverVersion()}")
     status = solver.Solve()
@@ -141,12 +162,12 @@ def optimize_ortools(lp: LinearProgram, bounds: Bounds, solver_name: str, verbos
             raise RuntimeError('the solver could not solve the problem')
 
     found_x = torch.tensor([var.solution_value() for var in vars])
-    found_maximum = objective.Value() + lp.bias.item()
+    found_maximum = objective.Value() + lp.bias
     return OptimizationResult(found_x, found_maximum)
 
 
 def optimize_cuopt(lp: LinearProgram, bounds: Bounds, verbose: bool) -> OptimizationResult:
-    from cuopt.linear_programming import problem, solver, solver_settings
+    from cuopt.linear_programming import problem, solver, solver_settings  # pyright: ignore[reportMissingImports]
 
     p = problem.Problem('AppMax')
     num_constraints, num_variables = lp.A_ub.shape
@@ -168,7 +189,8 @@ def optimize_cuopt(lp: LinearProgram, bounds: Bounds, verbose: bool) -> Optimiza
         expr = problem.LinearExpression(active_vars, coeffs, 0.0)
         p.addConstraint(expr <= b_ub[i])
 
-    p.setObjective(problem.LinearExpression(vars, lp.objective.tolist(), 0.0), sense=problem.MAXIMIZE)
+    sense = problem.MAXIMIZE if lp.maximize else problem.MINIMIZE
+    p.setObjective(problem.LinearExpression(vars, lp.objective.tolist(), 0.0), sense=sense)
 
     settings = solver_settings.SolverSettings()
     settings.set_parameter(solver.solver_parameters.CUOPT_METHOD, solver_settings.SolverMethod.PDLP)
@@ -178,7 +200,7 @@ def optimize_cuopt(lp: LinearProgram, bounds: Bounds, verbose: bool) -> Optimiza
         raise RuntimeError(f'Problem status: {p.Status.name}')
 
     found_x = torch.tensor([var.getValue() for var in vars])
-    found_maximum = p.ObjValue + lp.bias.item()
+    found_maximum = p.ObjValue + lp.bias
     return OptimizationResult(found_x, found_maximum)
 
 
@@ -188,18 +210,23 @@ def optimize_gurobi(lp: LinearProgram, bounds: Bounds, verbose: bool) -> Optimiz
     lb = [lb if lb is not None else float('-inf') for lb, _ in bounds]
     ub = [ub if ub is not None else float('inf') for _, ub in bounds]
 
-    with gurobipy.Model() as model:
-        x = model.addMVar(shape=num_variables, lb=lb, ub=ub)
-        model.setObjective(lp.objective.numpy() @ x, gurobipy.GRB.MAXIMIZE)
-        model.addConstr(lp.A_ub.numpy() @ x <= lp.b_ub.numpy())
-        model.optimize()
+    with gurobipy.Env(empty=True) as env:
+        env.setParam('LogToConsole', int(verbose))
+        env.start()
 
-        if model.Status == gurobipy.GRB.OPTIMAL:
-            found_x = torch.from_numpy(x.X).to(dtype=torch.get_default_dtype())
-            found_maximum = model.ObjVal + lp.bias.item()
-            return OptimizationResult(found_x, found_maximum)
-        else:
-            raise RuntimeError(f'optimization ended with status {model.Status}')
+        with gurobipy.Model(env=env) as model:
+            x = model.addMVar(shape=num_variables, lb=lb, ub=ub)
+            sense = gurobipy.GRB.MAXIMIZE if lp.maximize else gurobipy.GRB.MINIMIZE
+            model.setObjective(lp.objective.numpy() @ x, sense)
+            model.addConstr(lp.A_ub.numpy() @ x <= lp.b_ub.numpy())
+            model.optimize()
+
+            if model.Status == gurobipy.GRB.OPTIMAL:
+                found_x = torch.from_numpy(x.X).to(dtype=torch.get_default_dtype())
+                found_maximum = model.ObjVal + lp.bias
+                return OptimizationResult(found_x, found_maximum)
+            else:
+                raise RuntimeError(f'optimization ended with status {model.Status}')
 
 
 def check_feasibility(sample: torch.Tensor, A_ub: torch.Tensor, b_ub: torch.Tensor, bounds: Bounds, abs_tol: float = 1e-6):
