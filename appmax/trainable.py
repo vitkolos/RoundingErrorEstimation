@@ -9,8 +9,8 @@ import appmax.quantization
 Bounds = tuple[float, float] | list[tuple[float, float]]
 
 
-def bounds2list(bounds: Bounds, length: int):
-    return [bounds] * length if isinstance(bounds[0], float) else bounds
+def bounds2list(bounds: Bounds, length: int) -> list[tuple[float, float]]:
+    return bounds if isinstance(bounds, list) else [bounds] * length
 
 
 @dataclass

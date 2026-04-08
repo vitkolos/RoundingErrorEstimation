@@ -40,9 +40,5 @@ python_version = "3.13"
 warn_unused_configs = true
 
 [[tool.mypy.overrides]]
-module = [
-    "torchvision.*",
-    "sklearn.*",
-    "joblib.*"
-]
+module = "torchvision.*,sklearn.*,joblib.*,cuopt.*,ortools.*"
 ignore_missing_imports = true

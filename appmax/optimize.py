@@ -215,7 +215,7 @@ def optimize_gurobi(lp: LinearProgram, bounds: Bounds, verbose: bool) -> Optimiz
         env.start()
 
         with gurobipy.Model(env=env) as model:
-            x = model.addMVar(shape=num_variables, lb=lb, ub=ub)
+            x = model.addMVar(shape=num_variables, lb=np.array(lb), ub=np.array(ub))
             sense = gurobipy.GRB.MAXIMIZE if lp.maximize else gurobipy.GRB.MINIMIZE
             model.setObjective(lp.objective.numpy() @ x, sense)
             model.addConstr(lp.A_ub.numpy() @ x <= lp.b_ub.numpy())
