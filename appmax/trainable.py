@@ -6,11 +6,7 @@ from torch.utils.data import Dataset
 import torchmetrics
 import appmax.quantization
 
-Bounds = tuple[float, float] | list[tuple[float, float]]
-
-
-def bounds2list(bounds: Bounds, length: int) -> list[tuple[float, float]]:
-    return bounds if isinstance(bounds, list) else [bounds] * length
+Bounds = list[tuple[float, float]]
 
 
 @dataclass

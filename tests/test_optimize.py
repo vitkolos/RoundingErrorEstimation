@@ -3,8 +3,9 @@ import torch
 import torch.nn as nn
 
 import appmax.neurons
-import appmax.optimize
-from appmax.optimize import SOLVER_DEFAULT
+import appmax.optimization
+import appmax.solving
+from appmax.solving import SOLVER_DEFAULT
 import appmax.trainable
 import tests.test_neurons
 
@@ -15,15 +16,15 @@ def optimize_testing_procedure(net: nn.Module, sample: torch.Tensor, bounds: app
     constraints.neuron_states = []
     message = appmax.neurons.Message(sample)
     message = appmax.neurons.collect(net_collectable, message, constraints)
-    lp = appmax.optimize.prepare_lp(message, constraints)
-    sample_found, err_found = appmax.optimize.optimize(lp, bounds, solver)
+    lp = appmax.optimization.prepare_lp(message, constraints, bounds)
+    sample_found, err_found = appmax.solving.solve(lp, solver)
     sample_found = sample_found.reshape_as(sample)
     sample_comb = (1-mixing)*sample_found + mixing*sample
 
     # check feasibility
-    appmax.optimize.check_feasibility(sample, lp.A_ub, lp.b_ub, bounds)
-    appmax.optimize.check_feasibility(sample_found, lp.A_ub, lp.b_ub, bounds)
-    appmax.optimize.check_feasibility(sample_comb, lp.A_ub, lp.b_ub, bounds)
+    appmax.optimization.check_feasibility(sample, lp)
+    appmax.optimization.check_feasibility(sample_found, lp)
+    appmax.optimization.check_feasibility(sample_comb, lp)
 
     # check found objective value
     err_computed = net(sample_found.unsqueeze(0)).item()
@@ -34,19 +35,19 @@ def optimize_testing_procedure(net: nn.Module, sample: torch.Tensor, bounds: app
     constraints_point.neuron_states = []
     message_point = appmax.neurons.Message(sample_comb)
     message_point = appmax.neurons.collect(net_collectable, message_point, constraints_point)
-    lp_point = appmax.optimize.prepare_lp(message_point, constraints_point)
+    lp_point = appmax.optimization.prepare_lp(message_point, constraints_point, bounds)
 
     for t1, t2 in zip(constraints.neuron_states, constraints_point.neuron_states):
         torch.testing.assert_close(t1, t2, msg='States of neurons differ')
 
-    for t1, t2 in zip(lp, lp_point):
-        torch.testing.assert_close(t1, t2, msg='Linear programs differ')
+    for attr in ['A_ub', 'b_ub', 'objective', 'bias']:
+        torch.testing.assert_close(getattr(lp, attr), getattr(lp_point, attr), msg=f'Linear programs differ in {attr}')
 
 
 def test_deeper_appmax():
     net = tests.test_neurons.DummyNetDeeper()
     sample = torch.tensor([2.0, 1.0])
-    optimize_testing_procedure(net, sample, bounds=(-0.5, 3.0))
+    optimize_testing_procedure(net, sample, bounds=[(-0.5, 3.0)]*2)
 
 
 class DummyOptNetMaxPool(appmax.trainable.TrainableModel):
@@ -63,7 +64,7 @@ def test_max_pool_lp():
     net = DummyOptNetMaxPool()
     # 1 channel, 4×4 input shape
     sample = torch.testing.make_tensor((1, 4, 4), dtype=torch.float32, device='cpu', low=-1.0, high=2.0)
-    optimize_testing_procedure(net, sample, bounds=(-2.0, 3.0), mixing=0.01)
+    optimize_testing_procedure(net, sample, bounds=[(-2.0, 3.0)]*16, mixing=0.01)
 
 
 class DummyOptNetConv(appmax.trainable.TrainableModel):
@@ -84,4 +85,4 @@ def test_conv_lp():
     net = DummyOptNetConv()
     # 1 channel, 4×4 input shape
     sample = torch.testing.make_tensor((1, 4, 4), dtype=torch.float32, device='cpu', low=-1.0, high=2.0)
-    optimize_testing_procedure(net, sample, bounds=(-2.0, 3.0), mixing=0.01)
+    optimize_testing_procedure(net, sample, bounds=[(-2.0, 3.0)]*16, mixing=0.01)

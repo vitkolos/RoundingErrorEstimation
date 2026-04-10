@@ -6,8 +6,8 @@ import pandas as pd
 import tqdm
 
 import appmax.evaluation
-import appmax.optimize
-from appmax.optimize import SOLVER_DEFAULT
+import appmax.optimization
+from appmax.solving import SOLVER_DEFAULT
 
 
 def run(
@@ -77,11 +77,13 @@ def single(eval_net: appmax.evaluation.EvaluationNet, input_sample: torch.Tensor
     with torch.no_grad():
         error_sample = eval_net(input_sample_b).item()
 
-    input_nearby, error_nearby = appmax.optimize.find_appmax(eval_net, input_sample, solver, debug=debug)
+    approach = appmax.optimization.Approach.INTEGRAL
+    result = appmax.optimization.find_appmax(eval_net, input_sample, solver, approach, debug=debug)
 
     return {
         'input_sample': input_sample,
         'error_sample': error_sample,
-        'input_nearby': input_nearby,
-        'error_nearby': error_nearby,
+        'input_nearby': result.x,
+        'error_nearby': result.fun,
+        'polytope_width': result.width,
     }
