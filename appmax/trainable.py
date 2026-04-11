@@ -113,3 +113,10 @@ class TrainableModel(BaseModel):
         loss = loss_sum.item() / len(loader)
         metric = self.metric_fn.compute().item()
         return loss, metric
+
+
+def init_weights(module: nn.Module):
+    if isinstance(module, nn.Linear):
+        nn.init.kaiming_uniform_(module.weight, nonlinearity='relu')
+        if module.bias is not None:
+            nn.init.constant_(module.bias, 0)

@@ -1,7 +1,6 @@
 import pandas as pd
 import torch
 import torchmetrics
-import sklearn.datasets
 from appmax.trainable import nn, TrainableModel, DataSplit
 
 DATA_HOME = 'datasets'

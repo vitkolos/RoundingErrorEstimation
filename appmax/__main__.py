@@ -2,7 +2,7 @@ import torch
 import joblib
 import click
 
-from appmax.applications import california_housing, mnist, energy_efficiency
+from appmax.applications import california_housing, mnist, energy_efficiency, year_prediction
 import appmax.evaluation
 import appmax.experiment
 
@@ -54,6 +54,11 @@ def main(dataset, run_id, train, bits, solver, samples):
             MODEL_CLASS = mnist.SmallConvNetLegacy
             data_split = mnist.MnistSplit()
             seq_name = 'network'
+        case 'year':
+            MODEL_FILE = "models/year_prediction_simple_net.pt"
+            MODEL_CLASS = year_prediction.YearNet
+            data_split = year_prediction.YearPredictionSplit()
+            print('year scaling', data_split.scaler.scale_[0])
         case _:
             raise NotImplementedError(f"'{dataset}' dataset is not available")
 
@@ -71,8 +76,10 @@ def main(dataset, run_id, train, bits, solver, samples):
         model_approx.load(MODEL_FILE).eval()
         model_approx.round(bits=bits)
 
-        # loader_dev = torch.utils.data.DataLoader(data_split.dev, batch_size=64)
-        # print('metric', model.evaluate(loader_dev), model_approx.evaluate(loader_dev))
+        loader_dev = torch.utils.data.DataLoader(data_split.dev, batch_size=64)
+        print('metric', model.evaluate(loader_dev), model_approx.evaluate(loader_dev))
+        # x, y = data_split.test[50]
+        # print('prediction', pred := model(x).item(), 'true', true := y.item(), 'difference', abs(pred-true) * 10.939755)
 
         eval_net = appmax.evaluation.EvaluationNet(model, model_approx, data_split.bounds, seq_name=seq_name).eval()
 
