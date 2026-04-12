@@ -3,6 +3,7 @@ import enum
 
 import torch
 import numpy as np
+import tqdm
 
 import appmax.neurons
 import appmax.evaluation
@@ -90,7 +91,7 @@ def mean_width(polytope: Polytope, solver: str, num_directions: int = 100) -> fl
     directions /= torch.linalg.vector_norm(directions, dim=1, keepdim=True)
     widths_sum = 0.0
 
-    for direction in directions:
+    for direction in tqdm.tqdm(directions, leave=False):
         lp_min = LinearProgram(polytope.bounds, polytope.A_ub, polytope.b_ub, objective=direction, maximize=False)
         res_min = appmax.solving.solve(lp_min, solver)
         lp_max = LinearProgram(polytope.bounds, polytope.A_ub, polytope.b_ub, objective=direction, maximize=True)
