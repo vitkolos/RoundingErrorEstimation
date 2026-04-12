@@ -39,9 +39,9 @@ class BaseModel(nn.Module):
         self.load_state_dict(data)
         return self
 
-    def round(self, bits=16):
+    def round(self, **kwargs):
         """modifies the network in-place (converts the network to its approximation)"""
-        return appmax.quantization.lower_precision(self, bits)
+        return appmax.quantization.lower_precision(self, **kwargs)
 
 
 class TrainableModel(BaseModel):

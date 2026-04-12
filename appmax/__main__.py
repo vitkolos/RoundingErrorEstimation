@@ -55,7 +55,7 @@ def main(dataset, run_id, train, bits, solver, samples):
             data_split = mnist.MnistSplit()
             seq_name = 'network'
         case 'year':
-            MODEL_FILE = "models/year_prediction_simple_net.pt"
+            MODEL_FILE = "models/year_prediction_net.pt"
             MODEL_CLASS = year_prediction.YearNet
             data_split = year_prediction.YearPredictionSplit()
             print('year scaling', data_split.scaler.scale_[0])
