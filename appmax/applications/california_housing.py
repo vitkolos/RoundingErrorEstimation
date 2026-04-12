@@ -10,7 +10,7 @@ class CaliforniaHousingDataset(torch.utils.data.Dataset):
     def __init__(self):
         data, target = sklearn.datasets.fetch_california_housing(data_home='datasets', return_X_y=True)
         self.data = torch.from_numpy(data).to(dtype=torch.get_default_dtype())
-        self.target = torch.from_numpy(target).to(dtype=torch.get_default_dtype())
+        self.target = torch.from_numpy(target).to(dtype=torch.get_default_dtype()).unsqueeze(-1)
 
     def __len__(self):
         return self.data.shape[0]
