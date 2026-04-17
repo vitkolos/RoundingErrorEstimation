@@ -1,27 +1,28 @@
-from dataclasses import dataclass
+import dataclasses
 from typing import NamedTuple
 
 import torch
 import numpy as np
+import tqdm
 import scipy.optimize
-from ortools.linear_solver import pywraplp
 import gurobipy
 
 from appmax.trainable import Bounds
 
 
-@dataclass
+@dataclasses.dataclass
 class Polytope:
     bounds: Bounds
     A_ub: torch.Tensor
     b_ub: torch.Tensor
 
 
-@dataclass
+@dataclasses.dataclass
 class LinearProgram(Polytope):
     objective: torch.Tensor
     bias: float = 0.0
-    maximize: bool = True
+    maximize: bool = True  # used only if multiple_objectives == False
+    multiple_objectives: bool = False
 
 
 class OptimizationResult(NamedTuple):
@@ -32,8 +33,18 @@ class OptimizationResult(NamedTuple):
 SOLVER_DEFAULT = 'highs'
 
 
-def solve(lp: LinearProgram, solver: str = SOLVER_DEFAULT, verbose: bool = False) -> OptimizationResult:
+def get_min_max_lps(lp: LinearProgram, objective: torch.Tensor) -> tuple[LinearProgram, LinearProgram]:
+    lp_min = dataclasses.replace(lp, objective=objective, multiple_objectives=False, maximize=False)
+    lp_max = dataclasses.replace(lp, objective=objective, multiple_objectives=False, maximize=True)
+    return lp_min, lp_max
+
+
+def solve(lp: LinearProgram, solver: str = SOLVER_DEFAULT, verbose: bool = False) -> OptimizationResult | list[tuple[OptimizationResult, OptimizationResult]]:
     solver_lower = solver.lower()
+
+    if lp.multiple_objectives and solver_lower != 'gurobi':
+        lps = (get_min_max_lps(lp, objective) for objective in tqdm.tqdm(lp.objective, leave=False))
+        return [(solve(lp_min, solver, verbose), solve(lp_max, solver, verbose)) for lp_min, lp_max in lps]
 
     match solver_lower:
         case 'highs': return solve_scipy(lp, verbose)
@@ -67,6 +78,8 @@ def solve_scipy(lp: LinearProgram, verbose: bool) -> OptimizationResult:
 
 
 def solve_ortools(lp: LinearProgram, solver_name: str, verbose: bool) -> OptimizationResult:
+    from ortools.linear_solver import pywraplp
+
     solver: pywraplp.Solver = pywraplp.Solver.CreateSolver(solver_name)
     if not solver:
         raise ValueError(f"solver '{solver_name}' could not be created")
@@ -148,8 +161,8 @@ def solve_cuopt(lp: LinearProgram, verbose: bool) -> OptimizationResult:
     return OptimizationResult(found_x, found_maximum)
 
 
-def solve_gurobi(lp: LinearProgram, verbose: bool) -> OptimizationResult:
-    num_variables = lp.objective.shape[0]
+def solve_gurobi(lp: LinearProgram, verbose: bool) -> OptimizationResult | list[tuple[OptimizationResult, OptimizationResult]]:
+    num_variables = lp.A_ub.shape[1]
     lb = [lb if lb is not None else float('-inf') for lb, _ in lp.bounds]
     ub = [ub if ub is not None else float('inf') for _, ub in lp.bounds]
 
@@ -159,14 +172,21 @@ def solve_gurobi(lp: LinearProgram, verbose: bool) -> OptimizationResult:
 
         with gurobipy.Model(env=env) as model:
             x = model.addMVar(shape=num_variables, lb=np.array(lb), ub=np.array(ub))
-            sense = gurobipy.GRB.MAXIMIZE if lp.maximize else gurobipy.GRB.MINIMIZE
-            model.setObjective(lp.objective.numpy() @ x, sense)
             model.addConstr(lp.A_ub.numpy() @ x <= lp.b_ub.numpy())
-            model.optimize()
 
-            if model.Status == gurobipy.GRB.OPTIMAL:
-                found_x = torch.from_numpy(x.X).to(dtype=torch.get_default_dtype())
-                found_maximum = model.ObjVal + lp.bias
-                return OptimizationResult(found_x, found_maximum)
+            def optimize(objective: torch.Tensor, maximize: bool) -> OptimizationResult:
+                sense = gurobipy.GRB.MAXIMIZE if maximize else gurobipy.GRB.MINIMIZE
+                model.setObjective(objective.numpy() @ x, sense)
+                model.optimize()
+
+                if model.Status == gurobipy.GRB.OPTIMAL:
+                    found_x = torch.from_numpy(x.X).to(dtype=torch.get_default_dtype())
+                    found_maximum = model.ObjVal + lp.bias
+                    return OptimizationResult(found_x, found_maximum)
+                else:
+                    raise RuntimeError(f'optimization ended with status {model.Status}')
+
+            if lp.multiple_objectives:
+                return [(optimize(o, maximize=False), optimize(o, maximize=True)) for o in tqdm.tqdm(lp.objective, leave=False)]
             else:
-                raise RuntimeError(f'optimization ended with status {model.Status}')
+                return optimize(lp.objective, lp.maximize)

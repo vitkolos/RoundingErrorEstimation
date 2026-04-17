@@ -77,7 +77,7 @@ def single(eval_net: appmax.evaluation.EvaluationNet, input_sample: torch.Tensor
     with torch.no_grad():
         error_sample = eval_net(input_sample_b).item()
 
-    approach = appmax.optimization.Approach.STANDARD
+    approach = appmax.optimization.Approach.WEIGHTED
     result = appmax.optimization.find_appmax(eval_net, input_sample, solver, approach, debug=debug)
 
     return {

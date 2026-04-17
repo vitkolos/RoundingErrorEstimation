@@ -43,7 +43,14 @@ def find_appmax(eval_net: appmax.evaluation.EvaluationNet, sample: torch.Tensor,
 
     if approach != Approach.STANDARD:
         measured_polytope = prepare_integral(lp) if approach == Approach.INTEGRAL else lp
+
+        # import time
+        # start = time.time()
+
         width = mean_width(measured_polytope, solver)
+
+        # end = time.time()
+        # print('time', end-start)
 
     return PolytopeResult(sample_found, err_found, width)
 
@@ -91,12 +98,16 @@ def mean_width(polytope: Polytope, solver: str, num_directions: int = 100) -> fl
     directions /= torch.linalg.vector_norm(directions, dim=1, keepdim=True)
     widths_sum = 0.0
 
-    for direction in tqdm.tqdm(directions, leave=False):
-        lp_min = LinearProgram(polytope.bounds, polytope.A_ub, polytope.b_ub, objective=direction, maximize=False)
-        res_min = appmax.solving.solve(lp_min, solver)
-        lp_max = LinearProgram(polytope.bounds, polytope.A_ub, polytope.b_ub, objective=direction, maximize=True)
-        res_max = appmax.solving.solve(lp_max, solver)
-        widths_sum += res_max.fun - res_min.fun
+    # for direction in tqdm.tqdm(directions, leave=False):
+    #     lp_min = LinearProgram(polytope.bounds, polytope.A_ub, polytope.b_ub, objective=direction, maximize=False)
+    #     res_min = appmax.solving.solve(lp_min, solver)
+    #     lp_max = LinearProgram(polytope.bounds, polytope.A_ub, polytope.b_ub, objective=direction, maximize=True)
+    #     res_max = appmax.solving.solve(lp_max, solver)
+    #     widths_sum += res_max.fun - res_min.fun
+
+    lp = LinearProgram(polytope.bounds, polytope.A_ub, polytope.b_ub, objective=directions, multiple_objectives=True)
+    results = appmax.solving.solve(lp, solver)
+    widths_sum = sum((res_max.fun - res_min.fun) for res_min, res_max in results)
 
     return widths_sum / num_directions
 
