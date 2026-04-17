@@ -3,7 +3,6 @@ import enum
 
 import torch
 import numpy as np
-import tqdm
 
 import appmax.neurons
 import appmax.evaluation
@@ -43,14 +42,7 @@ def find_appmax(eval_net: appmax.evaluation.EvaluationNet, sample: torch.Tensor,
 
     if approach != Approach.STANDARD:
         measured_polytope = prepare_integral(lp) if approach == Approach.INTEGRAL else lp
-
-        # import time
-        # start = time.time()
-
         width = mean_width(measured_polytope, solver)
-
-        # end = time.time()
-        # print('time', end-start)
 
     return PolytopeResult(sample_found, err_found, width)
 
@@ -91,25 +83,15 @@ def prepare_integral(lp: LinearProgram) -> Polytope:
     return Polytope(bounds, A_ub, b_ub)
 
 
-def mean_width(polytope: Polytope, solver: str, num_directions: int = 100) -> float:
+def mean_width(polytope: Polytope, solver: str, num_directions: int = 100, cummulative: bool = False) -> float | torch.Tensor:
     # variables == dimensions
     num_variables = polytope.A_ub.shape[1]
     directions = torch.randn(num_directions, num_variables)
     directions /= torch.linalg.vector_norm(directions, dim=1, keepdim=True)
-    widths_sum = 0.0
-
-    # for direction in tqdm.tqdm(directions, leave=False):
-    #     lp_min = LinearProgram(polytope.bounds, polytope.A_ub, polytope.b_ub, objective=direction, maximize=False)
-    #     res_min = appmax.solving.solve(lp_min, solver)
-    #     lp_max = LinearProgram(polytope.bounds, polytope.A_ub, polytope.b_ub, objective=direction, maximize=True)
-    #     res_max = appmax.solving.solve(lp_max, solver)
-    #     widths_sum += res_max.fun - res_min.fun
-
     lp = LinearProgram(polytope.bounds, polytope.A_ub, polytope.b_ub, objective=directions, multiple_objectives=True)
     results = appmax.solving.solve(lp, solver)
-    widths_sum = sum((res_max.fun - res_min.fun) for res_min, res_max in results)
-
-    return widths_sum / num_directions
+    widths = torch.tensor([(res_max.fun - res_min.fun) for res_min, res_max in results])
+    return widths.mean().item() if not cummulative else widths.cumsum(dim=0) / torch.arange(1, num_directions+1)
 
 
 def check_feasibility(sample: torch.Tensor, polytope: Polytope, abs_tol: float = 1e-6):
