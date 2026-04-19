@@ -1307,18 +1307,6 @@ wheels = [
 ]
 
 [[package]]
-name = "polytope"
-version = "0.2.5"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "networkx" },
-    { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform != 'emscripten' and sys_platform != 'win32'" },
-    { name = "numpy", version = "2.4.2", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform == 'emscripten' or sys_platform == 'win32'" },
-    { name = "scipy" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/9a/9e/d7395dc2e02327a90a610f522cb2345a539ec2e3ddc1a5a215b34e4c9090/polytope-0.2.5.tar.gz", hash = "sha256:75712395592e43703986e707474bde962bb6491c09f4bdccfc0ebd4c6c387f09", size = 54928, upload-time = "2024-03-07T07:03:10.12Z" }
-
-[[package]]
 name = "protobuf"
 version = "6.33.6"
 source = { registry = "https://pypi.org/simple" }
@@ -1536,7 +1524,6 @@ dependencies = [
     { name = "openpyxl" },
     { name = "ortools" },
     { name = "pandas" },
-    { name = "polytope" },
     { name = "scikit-learn" },
     { name = "scipy" },
     { name = "torch" },
@@ -1563,7 +1550,6 @@ requires-dist = [
     { name = "openpyxl", specifier = ">=3.1.5" },
     { name = "ortools", specifier = ">=9.15.6755" },
     { name = "pandas", specifier = "<2.4.0" },
-    { name = "polytope", specifier = ">=0.2.5" },
     { name = "scikit-learn", specifier = ">=1.8.0" },
     { name = "scipy", specifier = ">=1.17.1" },
     { name = "torch", specifier = ">=2.10.0" },
