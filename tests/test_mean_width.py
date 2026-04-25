@@ -3,6 +3,7 @@ import scipy
 
 import appmax.optimization
 from appmax.solving import SOLVER_DEFAULT
+from appmax.trainable import Bounds
 
 ABS_TOL = 0.05
 
@@ -26,7 +27,7 @@ def test_cube():
         for y in [-1, 1]
         for z in [-1, 1]
     ]
-    polytope = appmax.optimization.Polytope([(-2, 2)] * 3, *vertices_to_H(vertices))
+    polytope = appmax.optimization.Polytope(Bounds([(-2, 2)] * 3), *vertices_to_H(vertices))
     torch.testing.assert_close(mean_width(polytope), expected=3.0, atol=ABS_TOL, rtol=0)
 
 
@@ -37,7 +38,7 @@ def test_tetrahedron():
         [-1,  1, -1],
         [-1, -1,  1],
     ]
-    polytope = appmax.optimization.Polytope([(-2, 2)] * 3, *vertices_to_H(vertices))
+    polytope = appmax.optimization.Polytope(Bounds([(-2, 2)] * 3), *vertices_to_H(vertices))
     torch.testing.assert_close(mean_width(polytope), expected=2.58, atol=ABS_TOL, rtol=0)
 
 
@@ -47,5 +48,5 @@ def test_octahedron():
         [0,  1,  0], [0, -1,  0],
         [0,  0,  1], [0,  0, -1]
     ]
-    polytope = appmax.optimization.Polytope([(-2, 2)] * 3, *vertices_to_H(vertices))
+    polytope = appmax.optimization.Polytope(Bounds([(-2, 2)] * 3), *vertices_to_H(vertices))
     torch.testing.assert_close(mean_width(polytope), expected=1.66, atol=ABS_TOL, rtol=0)

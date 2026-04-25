@@ -1,16 +1,33 @@
 import torch
+from torch import nn
 import torchmetrics
 import sklearn.datasets
-from appmax.trainable import nn, TrainableModel, DataSplit
+import sklearn.preprocessing
+import numpy as np
+import appmax.trainable
 
 
 class CaliforniaHousingDataset(torch.utils.data.Dataset):
     """https://scikit-learn.org/stable/datasets/real_world.html#california-housing-dataset"""
 
-    def __init__(self):
+    def __init__(self, metadata: appmax.trainable.Metadata):
         data, target = sklearn.datasets.fetch_california_housing(data_home='datasets', return_X_y=True)
-        self.data = torch.from_numpy(data).to(dtype=torch.get_default_dtype())
-        self.target = torch.from_numpy(target).to(dtype=torch.get_default_dtype()).unsqueeze(-1)
+        data = np.column_stack((target, data))
+
+        if metadata.scaler is None:
+            metadata.scaler = sklearn.preprocessing.StandardScaler()
+            metadata.scaler.fit(data)
+            metadata.error_scaling = metadata.scaler.scale_[0]
+
+        data = metadata.scaler.transform(data)
+
+        if metadata.bounds is None:
+            metadata.fit_bounds(data)
+        else:
+            data = metadata.remove_outliers(data)
+
+        self.data = torch.from_numpy(data[:, metadata.sl_data]).to(dtype=torch.get_default_dtype())
+        self.target = torch.from_numpy(data[:, metadata.sl_target]).to(dtype=torch.get_default_dtype())
 
     def __len__(self):
         return self.data.shape[0]
@@ -19,15 +36,14 @@ class CaliforniaHousingDataset(torch.utils.data.Dataset):
         return self.data[index], self.target[index]
 
 
-class CaliforniaHousingSplit(DataSplit):
+class CaliforniaHousingSplit(appmax.trainable.DataSplit):
     def __init__(self):
-        dataset = CaliforniaHousingDataset()
+        self.metadata = appmax.trainable.Metadata()
+        dataset = CaliforniaHousingDataset(self.metadata)
         self.train, self.dev, self.test = torch.utils.data.random_split(dataset, [6/8, 1/8, 1/8])
-        self.bounds = [(0.4, 15.0), (1.0, 52.0), (0.8, 142.0), (0.3, 34.1),
-                       (3.0, 35682.0), (0.6, 1243.4), (32.5, 42.0), (-124.4, -114.3)]
 
 
-class SimpleNet(TrainableModel):
+class SimpleNet(appmax.trainable.TrainableModel):
     def __init__(self):
         super().__init__(
             nn.Sequential(

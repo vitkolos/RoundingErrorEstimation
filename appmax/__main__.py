@@ -15,7 +15,7 @@ import appmax.experiment
 @click.option('-b', '--bits', default=8)
 @click.option('-s', '--solver', default=appmax.experiment.SOLVER_DEFAULT)
 @click.option('-n', 'samples', default=-1)
-def main(dataset: str, run_id: str, approach: appmax.experiment.Approach, train: bool, bits: int, solver: str, samples: int):
+def main(dataset, run_id, approach, train, bits, solver, samples):
     """
     AppMax \n
     input: evaluation network (original net. & approximated net. combined), data samples \n
@@ -50,7 +50,6 @@ def main(dataset: str, run_id: str, approach: appmax.experiment.Approach, train:
             MODEL_FILE = "models/year_prediction_net.pt"
             MODEL_CLASS = year_prediction.YearNet
             data_split = year_prediction.YearPredictionSplit()
-            print('year scaling', data_split.scaler.scale_[0])
         case _:
             raise NotImplementedError(f"'{dataset}' dataset is not available")
 
@@ -69,15 +68,17 @@ def main(dataset: str, run_id: str, approach: appmax.experiment.Approach, train:
         model_approx.round(bits=bits)
 
         loader_dev = torch.utils.data.DataLoader(data_split.dev, batch_size=64)
-        print('metric', model.evaluate(loader_dev), model_approx.evaluate(loader_dev))
+        # print('metric', model.evaluate(loader_dev), model_approx.evaluate(loader_dev))
         # x, y = data_split.test[50]
         # print('prediction', pred := model(x).item(), 'true', true := y.item(), 'difference', abs(pred-true) * 10.939755)
 
-        eval_net = appmax.evaluation.EvaluationNet(model, model_approx, data_split.bounds, seq_name=seq_name).eval()
+        eval_net = appmax.evaluation.EvaluationNet(model, model_approx, data_split.metadata.bounds, seq_name=seq_name).eval()
 
         input_sample = data_split.test[0][0]
         result = appmax.experiment.single(eval_net, input_sample, approach, solver, debug=True)
-        print('errors', result['error_sample'], result['error_nearby'], result['polytope_width'])
+        errors = [result['error_sample'], result['error_nearby'], result['polytope_width']]
+        print('errors', *errors)
+        print('scaled', *[x*data_split.metadata.error_scaling if x is not None else '' for x in errors])
         print('california reference\nerrors 0.6520774364471436 0.7007212460728052')
         # print('mnist-conv reference\nerrors 0.5852416753768921 0.6485908165661114')
 
@@ -85,9 +86,9 @@ def main(dataset: str, run_id: str, approach: appmax.experiment.Approach, train:
         # max, avg = appmax.evaluation.compute_error_aggregate(model, model_approx, loader_test)
         # print(f"{max=}, {avg=}")
 
-        with joblib.parallel_config(backend='threading', n_jobs=1):
-            appmax.experiment.run(f'experiments/{dataset}', run_id, eval_net,
-                                  data_split.test, approach, first_k=samples)
+        # with joblib.parallel_config(backend='threading', n_jobs=1):
+        #     appmax.experiment.run(f'experiments/{dataset}', run_id, eval_net,
+        #                           data_split.test, approach, first_k=samples)
 
 
 if __name__ == '__main__':

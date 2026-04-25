@@ -67,7 +67,7 @@ def solve_scipy(lp: LinearProgram, verbose: bool) -> OptimizationResult:
     sense = -1 if lp.maximize else 1
     c = sense * lp.objective
     result = scipy.optimize.linprog(c.numpy(), lp.A_ub.numpy(), lp.b_ub.numpy(),
-                                    bounds=lp.bounds, options={'disp': verbose})
+                                    bounds=lp.bounds.seq, options={'disp': verbose})
 
     if not result.success:
         match result.status:
@@ -99,7 +99,7 @@ def solve_ortools(lp: LinearProgram, solver_name: str, verbose: bool) -> Optimiz
 
     vars = []
     for j in range(num_variables):
-        lb, ub = lp.bounds[j]
+        lb, ub = lp.bounds.seq[j]
         vars.append(solver.NumVar(
             lb if lb is not None else -solver.infinity(),
             ub if ub is not None else solver.infinity(),
@@ -140,7 +140,7 @@ def solve_cuopt(lp: LinearProgram, verbose: bool) -> OptimizationResult:
 
     vars = []
     for j in range(num_variables):
-        lb, ub = lp.bounds[j]
+        lb, ub = lp.bounds.seq[j]
         vars.append(p.addVariable(
             lb if lb is not None else -solver.infinity(),
             ub if ub is not None else solver.infinity(),
@@ -171,15 +171,13 @@ def solve_cuopt(lp: LinearProgram, verbose: bool) -> OptimizationResult:
 
 def solve_gurobi(lp: LinearProgram, verbose: bool, multiple_objectives: torch.Tensor | None = None) -> OptimizationResult | MultipleResults:
     num_variables = lp.A_ub.shape[1]
-    lb = [lb if lb is not None else float('-inf') for lb, _ in lp.bounds]
-    ub = [ub if ub is not None else float('inf') for _, ub in lp.bounds]
 
     with gurobipy.Env(empty=True) as env:
         env.setParam('LogToConsole', int(verbose))
         env.start()
 
         with gurobipy.Model(env=env) as model:
-            x = model.addMVar(shape=num_variables, lb=np.array(lb), ub=np.array(ub))
+            x = model.addMVar(shape=num_variables, lb=lp.bounds.lb, ub=lp.bounds.ub)
             model.addConstr(lp.A_ub.numpy() @ x <= lp.b_ub.numpy())
 
             def optimize(objective: torch.Tensor, maximize: bool) -> OptimizationResult:

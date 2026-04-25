@@ -73,7 +73,7 @@ def prepare_lp(message: appmax.neurons.Message, constraints: appmax.neurons.Cons
 def prepare_integral(lp: LinearProgram) -> Polytope:
     # add one variable (error is always non-negative)
     A_ub = torch.hstack([lp.A_ub, torch.zeros(lp.A_ub.shape[0], 1)])
-    bounds = lp.bounds.copy() + [(0.0, None)]
+    bounds = Bounds(lp.bounds.seq + [(0.0, None)])
 
     # add one constraint
     last_row = torch.hstack([-lp.objective, torch.tensor(1.0)])
@@ -98,14 +98,11 @@ def check_feasibility(sample: torch.Tensor, polytope: Polytope, abs_tol: float =
     infeasible = False
     sample_flat = sample.flatten()
 
-    if len(polytope.bounds) != sample.numel():
-        raise RuntimeError(f'{len(polytope.bounds)} bounds were provided, but there are {sample.numel()} input neurons')
-    elif not isinstance(polytope.bounds, list) or not all(isinstance(b, tuple) for b in polytope.bounds):
-        raise RuntimeError(f'bounds have an incorrect type')
+    if len(polytope.bounds.seq) != sample.numel():
+        raise RuntimeError(f'{len(polytope.bounds.seq)} bounds were provided, but there are {sample.numel()} input neurons')
 
-    bounds_tensor = torch.atleast_2d(torch.tensor(np.array(polytope.bounds, dtype=float)))
-    too_low = torch.nonzero(sample_flat < bounds_tensor[:, 0]).flatten().tolist()
-    too_high = torch.nonzero(sample_flat > bounds_tensor[:, 1]).flatten().tolist()
+    too_low = torch.nonzero(sample_flat < torch.from_numpy(polytope.bounds.lb)).flatten().tolist()
+    too_high = torch.nonzero(sample_flat > torch.from_numpy(polytope.bounds.ub)).flatten().tolist()
 
     if too_low:
         infeasible = True

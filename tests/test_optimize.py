@@ -7,6 +7,7 @@ import appmax.optimization
 import appmax.solving
 from appmax.solving import SOLVER_DEFAULT
 import appmax.trainable
+from appmax.trainable import Bounds
 import tests.test_neurons
 
 
@@ -47,7 +48,7 @@ def optimize_testing_procedure(net: nn.Module, sample: torch.Tensor, bounds: app
 def test_deeper_appmax():
     net = tests.test_neurons.DummyNetDeeper()
     sample = torch.tensor([2.0, 1.0])
-    optimize_testing_procedure(net, sample, bounds=[(-0.5, 3.0)]*2)
+    optimize_testing_procedure(net, sample, bounds=Bounds([(-0.5, 3.0)]*2))
 
 
 class DummyOptNetMaxPool(appmax.trainable.TrainableModel):
@@ -64,7 +65,7 @@ def test_max_pool_lp():
     net = DummyOptNetMaxPool()
     # 1 channel, 4×4 input shape
     sample = torch.testing.make_tensor((1, 4, 4), dtype=torch.float32, device='cpu', low=-1.0, high=2.0)
-    optimize_testing_procedure(net, sample, bounds=[(-2.0, 3.0)]*16, mixing=0.01)
+    optimize_testing_procedure(net, sample, bounds=Bounds([(-2.0, 3.0)]*16), mixing=0.01)
 
 
 class DummyOptNetConv(appmax.trainable.TrainableModel):
@@ -85,4 +86,4 @@ def test_conv_lp():
     net = DummyOptNetConv()
     # 1 channel, 4×4 input shape
     sample = torch.testing.make_tensor((1, 4, 4), dtype=torch.float32, device='cpu', low=-1.0, high=2.0)
-    optimize_testing_procedure(net, sample, bounds=[(-2.0, 3.0)]*16, mixing=0.01)
+    optimize_testing_procedure(net, sample, bounds=Bounds([(-2.0, 3.0)]*16), mixing=0.01)

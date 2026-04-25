@@ -1,12 +1,53 @@
 from dataclasses import dataclass
+
 import tqdm
+import numpy as np
 import torch
 from torch import nn
 from torch.utils.data import Dataset
 import torchmetrics
+import sklearn.base
+
 import appmax.quantization
 
-Bounds = list[tuple[float | None, float | None]]
+
+class Bounds:
+    def __init__(self, bounds: list[tuple[float | None, float | None]], lb: np.ndarray | None = None, ub: np.ndarray | None = None):
+        self.seq = bounds
+
+        if lb is not None and ub is not None:
+            self.lb, self.ub = lb, ub
+        else:
+            self.lb = np.array([lb if lb is not None else float('-inf') for lb, _ in bounds])
+            self.ub = np.array([ub if ub is not None else float('inf') for _, ub in bounds])
+
+
+@dataclass
+class Metadata:
+    bounds: Bounds | None = None
+    scaler: sklearn.base.TransformerMixin | None = None
+    error_scaling: float = 1.0
+    sl_data: slice = slice(1, None)
+    sl_target: slice = slice(0, 1)
+
+    def fit_bounds(self, data_full: np.ndarray, padding: float = 0.05):
+        data = data_full[:, self.sl_data]
+        mins, maxs = np.min(data, axis=0), np.max(data, axis=0)
+        ranges = maxs - mins
+        lower_bounds = mins - (ranges * padding)
+        upper_bounds = maxs + (ranges * padding)
+        bounds = list(zip(lower_bounds.tolist(), upper_bounds.tolist()))
+        self.bounds = Bounds(bounds, lower_bounds, upper_bounds)
+
+    def remove_outliers(self, data_full: np.ndarray):
+        if self.bounds is None:
+            raise AttributeError('bounds not fitted')
+
+        data = data_full[:, self.sl_data]
+        valid_cells = (data >= self.bounds.lb) & (data <= self.bounds.ub)
+        valid_rows = valid_cells.all(axis=1)
+        print(f'removed {(~valid_rows).sum()} outliers')
+        return data_full[valid_rows]
 
 
 @dataclass
