@@ -11,23 +11,15 @@ import appmax.experiment
 @click.argument('dataset')
 @click.argument('run-id', default='run')
 @click.option('--train', is_flag=True)
+@click.option('-a', '--approach', type=click.Choice(appmax.experiment.Approach, case_sensitive=False), default=appmax.experiment.Approach.STANDARD)
 @click.option('-b', '--bits', default=8)
 @click.option('-s', '--solver', default=appmax.experiment.SOLVER_DEFAULT)
 @click.option('-n', 'samples', default=-1)
-def main(dataset, run_id, train, bits, solver, samples):
+def main(dataset: str, run_id: str, approach: appmax.experiment.Approach, train: bool, bits: int, solver: str, samples: int):
     """
-    1) prepare a dataset
-    2) train (or provide) a network
-    3) generate (or provide) an approximated network
-    ---
-    4) simplify networks (to ReLU & linear layers + normalize)
-    5) combine them into an evaluation network
-    6) perform (parallel) linear optimimization to find maxima in polytopes
-    7) report results
-
-    AppMax
-    input: original network, approximated network, data samples
-    output: reported errors (single sample × polytope; maximum × average)
+    AppMax \n
+    input: evaluation network (original net. & approximated net. combined), data samples \n
+    output: reported errors (on a single sample or on the polytope; maximum and average)
     """
 
     torch.manual_seed(42)
@@ -84,7 +76,7 @@ def main(dataset, run_id, train, bits, solver, samples):
         eval_net = appmax.evaluation.EvaluationNet(model, model_approx, data_split.bounds, seq_name=seq_name).eval()
 
         input_sample = data_split.test[0][0]
-        result = appmax.experiment.single(eval_net, input_sample, solver, debug=True)
+        result = appmax.experiment.single(eval_net, input_sample, approach, solver, debug=True)
         print('errors', result['error_sample'], result['error_nearby'], result['polytope_width'])
         print('california reference\nerrors 0.6520774364471436 0.7007212460728052')
         # print('mnist-conv reference\nerrors 0.5852416753768921 0.6485908165661114')
@@ -93,8 +85,9 @@ def main(dataset, run_id, train, bits, solver, samples):
         # max, avg = appmax.evaluation.compute_error_aggregate(model, model_approx, loader_test)
         # print(f"{max=}, {avg=}")
 
-        # with joblib.parallel_config(backend='threading', n_jobs=1):
-        #     appmax.experiment.run(f'experiments/{dataset}', run_id, eval_net, data_split.test, first_k=samples)
+        with joblib.parallel_config(backend='threading', n_jobs=1):
+            appmax.experiment.run(f'experiments/{dataset}', run_id, eval_net,
+                                  data_split.test, approach, first_k=samples)
 
 
 if __name__ == '__main__':

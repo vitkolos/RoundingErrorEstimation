@@ -3,10 +3,12 @@ from pathlib import Path
 import torch
 import joblib
 import pandas as pd
+import numpy as np
 import tqdm
 
 import appmax.evaluation
 import appmax.optimization
+from appmax.optimization import Approach
 from appmax.solving import SOLVER_DEFAULT
 
 
@@ -15,6 +17,7 @@ def run(
     run_id: str,
     eval_net: appmax.evaluation.EvaluationNet,
     samples: list,
+    approach: Approach,
     first_k: int | None = None,
     use_memory: bool = True,
     show_tensors: bool = False
@@ -41,17 +44,28 @@ def run(
     # setup generators
     wrapped_step = joblib.delayed(wrapped_step)
     para = joblib.Parallel(return_as='generator_unordered')
-    results_gen = para(wrapped_step(run_id, i, eval_net, get_sample(i)) for i in range(total_length))
+    results_gen = para(wrapped_step(run_id, i, approach, eval_net, get_sample(i)) for i in range(total_length))
     progress_gen = tqdm.tqdm(results_gen, leave=False, total=total_length)
 
     # run & process output
     df = pd.DataFrame(progress_gen)
     df = df.set_index('sample_index').sort_index()
-    df_errors = df[['error_sample', 'error_nearby']]
+    df_errors = df[['error_sample', 'error_nearby', 'polytope_width']]
     df_errors.to_csv(experiment_path / f'{run_id}_results.csv')
-    df_errors.describe(percentiles=[0.5]).to_csv(experiment_path / f'{run_id}_described.csv')
-    input_nearby_stack = torch.stack(df['input_nearby'].to_list())
-    torch.save(input_nearby_stack, experiment_path / f'{run_id}_tensors.pt')
+    described = df_errors.describe(percentiles=[0.5])
+    weights = df_errors['polytope_width']
+
+    if weights.sum() > 0:
+        described.loc['weighted'] = pd.Series({
+            k: np.average(df_errors[k], weights=weights)
+            for k in ['error_sample', 'error_nearby'] if not df_errors[k].isna().any()
+        })
+
+    described.to_csv(experiment_path / f'{run_id}_described.csv')
+
+    if not df['input_nearby'].isna().any():
+        input_nearby_stack = torch.stack(df['input_nearby'].to_list())
+        torch.save(input_nearby_stack, experiment_path / f'{run_id}_tensors.pt')
 
     if show_tensors:
         def ten2strs(tensor):
@@ -63,21 +77,26 @@ def run(
                 print(i, 'nearby', *ten2strs(tensor_nearby), sep='\t', file=f)
 
 
-def step(run_id: str, sample_index: int, eval_net: appmax.evaluation.EvaluationNet, input_sample: torch.Tensor) -> dict:
+def step(run_id: str, sample_index: int, approach: Approach, eval_net: appmax.evaluation.EvaluationNet, input_sample: torch.Tensor) -> dict:
     """function for parallel execution
-    (run_id and sample_index are used for caching, eval_net and input_sample are ignored)"""
-    result = single(eval_net, input_sample)
+    (run_id & sample_index & approach are used for caching, eval_net & input_sample are ignored)"""
+    result = single(eval_net, input_sample, approach)
     result['sample_index'] = sample_index
     return result
 
 
-def single(eval_net: appmax.evaluation.EvaluationNet, input_sample: torch.Tensor, solver: str = SOLVER_DEFAULT, debug: bool = False) -> dict:
+def single(
+    eval_net: appmax.evaluation.EvaluationNet,
+    input_sample: torch.Tensor,
+    approach: Approach,
+    solver: str = SOLVER_DEFAULT,
+    debug: bool = False
+) -> dict:
     input_sample_b = input_sample.unsqueeze(0)  # sample -> batch (to support any PyTorch network)
 
     with torch.no_grad():
         error_sample = eval_net(input_sample_b).item()
 
-    approach = appmax.optimization.Approach.WEIGHTED
     result = appmax.optimization.find_appmax(eval_net, input_sample, solver, approach, debug=debug)
 
     return {
