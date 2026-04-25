@@ -17,7 +17,7 @@ class YearPredictionDataset(torch.utils.data.Dataset):
         # test: last 51,630 examples
         T_LEN = 463_715
         rows = {('nrows' if train else 'skiprows'): T_LEN}
-        data = pd.read_csv(f'{DATA_HOME}/YearPredictionMSD.txt', header=None, **rows).to_numpy()
+        data = pd.read_csv(f'{DATA_HOME}/YearPredictionMSD.txt', header=None, **rows).to_numpy()  # type: ignore
 
         if train:
             scaler.fit(data)

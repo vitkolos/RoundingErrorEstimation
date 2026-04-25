@@ -1,5 +1,5 @@
 import dataclasses
-from typing import NamedTuple
+from typing import NamedTuple, overload
 
 import torch
 import numpy as np
@@ -21,8 +21,7 @@ class Polytope:
 class LinearProgram(Polytope):
     objective: torch.Tensor
     bias: float = 0.0
-    maximize: bool = True  # used only if multiple_objectives == False
-    multiple_objectives: bool = False
+    maximize: bool = True
 
 
 class OptimizationResult(NamedTuple):
@@ -30,28 +29,37 @@ class OptimizationResult(NamedTuple):
     fun: float
 
 
+MultipleResults = list[tuple[OptimizationResult, OptimizationResult]]
+
 SOLVER_DEFAULT = 'highs'
 
 
 def get_min_max_lps(lp: LinearProgram, objective: torch.Tensor) -> tuple[LinearProgram, LinearProgram]:
-    lp_min = dataclasses.replace(lp, objective=objective, multiple_objectives=False, maximize=False)
-    lp_max = dataclasses.replace(lp, objective=objective, multiple_objectives=False, maximize=True)
+    lp_min = dataclasses.replace(lp, objective=objective, maximize=False)
+    lp_max = dataclasses.replace(lp, objective=objective, maximize=True)
     return lp_min, lp_max
 
+@overload
+def solve(lp: LinearProgram, solver: str = SOLVER_DEFAULT, verbose: bool = False) -> OptimizationResult: ...
 
-def solve(lp: LinearProgram, solver: str = SOLVER_DEFAULT, verbose: bool = False) -> OptimizationResult | list[tuple[OptimizationResult, OptimizationResult]]:
-    solver_lower = solver.lower()
+@overload
+def solve(lp: LinearProgram, solver: str = SOLVER_DEFAULT, verbose: bool = False, *, multiple_objectives: torch.Tensor) -> MultipleResults: ...
 
-    if lp.multiple_objectives and solver_lower != 'gurobi':
-        lps = (get_min_max_lps(lp, objective) for objective in tqdm.tqdm(lp.objective, leave=False))
-        return [(solve(lp_min, solver, verbose), solve(lp_max, solver, verbose)) for lp_min, lp_max in lps]
+def solve(lp: LinearProgram, solver: str = SOLVER_DEFAULT, verbose: bool = False, multiple_objectives: torch.Tensor | None = None) -> OptimizationResult | MultipleResults:
+    if solver.lower() == 'gurobi':
+        return solve_gurobi(lp, verbose, multiple_objectives=multiple_objectives)
 
-    match solver_lower:
-        case 'highs': return solve_scipy(lp, verbose)
-        case 'gurobi': return solve_gurobi(lp, verbose)
-        case 'cuopt': return solve_cuopt(lp, verbose)
+    def solve_single(lp: LinearProgram) -> OptimizationResult:
+        match solver.lower():
+            case 'highs': return solve_scipy(lp, verbose)
+            case 'cuopt': return solve_cuopt(lp, verbose)
+        return solve_ortools(lp, solver, verbose)
 
-    return solve_ortools(lp, solver, verbose)
+    if multiple_objectives is not None:
+        lps = (get_min_max_lps(lp, objective) for objective in tqdm.tqdm(multiple_objectives, leave=False))
+        return [(solve_single(lp_min), solve_single(lp_max)) for lp_min, lp_max in lps]
+
+    return solve_single(lp)
 
 
 def solve_scipy(lp: LinearProgram, verbose: bool) -> OptimizationResult:
@@ -161,7 +169,7 @@ def solve_cuopt(lp: LinearProgram, verbose: bool) -> OptimizationResult:
     return OptimizationResult(found_x, found_maximum)
 
 
-def solve_gurobi(lp: LinearProgram, verbose: bool) -> OptimizationResult | list[tuple[OptimizationResult, OptimizationResult]]:
+def solve_gurobi(lp: LinearProgram, verbose: bool, multiple_objectives: torch.Tensor | None = None) -> OptimizationResult | MultipleResults:
     num_variables = lp.A_ub.shape[1]
     lb = [lb if lb is not None else float('-inf') for lb, _ in lp.bounds]
     ub = [ub if ub is not None else float('inf') for _, ub in lp.bounds]
@@ -186,7 +194,7 @@ def solve_gurobi(lp: LinearProgram, verbose: bool) -> OptimizationResult | list[
                 else:
                     raise RuntimeError(f'optimization ended with status {model.Status}')
 
-            if lp.multiple_objectives:
-                return [(optimize(o, maximize=False), optimize(o, maximize=True)) for o in tqdm.tqdm(lp.objective, leave=False)]
+            if multiple_objectives is not None:
+                return [(optimize(o, maximize=False), optimize(o, maximize=True)) for o in tqdm.tqdm(multiple_objectives, leave=False)]
             else:
                 return optimize(lp.objective, lp.maximize)

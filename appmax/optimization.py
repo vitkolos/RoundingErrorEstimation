@@ -42,7 +42,7 @@ def find_appmax(eval_net: appmax.evaluation.EvaluationNet, sample: torch.Tensor,
 
     if approach != Approach.STANDARD:
         measured_polytope = prepare_integral(lp) if approach == Approach.INTEGRAL else lp
-        width = mean_width(measured_polytope, solver)
+        width = polytope_widths(measured_polytope, solver).mean().item()
 
     return PolytopeResult(sample_found, err_found, width)
 
@@ -83,15 +83,15 @@ def prepare_integral(lp: LinearProgram) -> Polytope:
     return Polytope(bounds, A_ub, b_ub)
 
 
-def mean_width(polytope: Polytope, solver: str, num_directions: int = 100, cummulative: bool = False) -> float | torch.Tensor:
+def polytope_widths(polytope: Polytope, solver: str, num_directions: int = 100, cummulative: bool = False) -> torch.Tensor:
     # variables == dimensions
     num_variables = polytope.A_ub.shape[1]
     directions = torch.randn(num_directions, num_variables)
     directions /= torch.linalg.vector_norm(directions, dim=1, keepdim=True)
-    lp = LinearProgram(polytope.bounds, polytope.A_ub, polytope.b_ub, objective=directions, multiple_objectives=True)
-    results = appmax.solving.solve(lp, solver)
+    lp = LinearProgram(polytope.bounds, polytope.A_ub, polytope.b_ub, objective=torch.empty(0))
+    results = appmax.solving.solve(lp, solver, multiple_objectives=directions)
     widths = torch.tensor([(res_max.fun - res_min.fun) for res_min, res_max in results])
-    return widths.mean().item() if not cummulative else widths.cumsum(dim=0) / torch.arange(1, num_directions+1)
+    return widths if not cummulative else widths.cumsum(dim=0) / torch.arange(1, num_directions+1)
 
 
 def check_feasibility(sample: torch.Tensor, polytope: Polytope, abs_tol: float = 1e-6):

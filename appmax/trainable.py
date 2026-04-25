@@ -6,7 +6,7 @@ from torch.utils.data import Dataset
 import torchmetrics
 import appmax.quantization
 
-Bounds = list[tuple[float, float]]
+Bounds = list[tuple[float | None, float | None]]
 
 
 @dataclass
