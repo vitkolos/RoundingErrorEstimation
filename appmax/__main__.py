@@ -27,8 +27,8 @@ def main(dataset, run_id, approach, train, bits, solver, samples):
 
     match dataset:
         case 'california':
-            MODEL_FILE = "models/california_housing_simple_net.pt"
-            MODEL_CLASS = california_housing.SimpleNet
+            MODEL_FILE = "models/california_housing_mlp.pt"
+            MODEL_CLASS = california_housing.HousingMLP
             data_split = california_housing.CaliforniaHousingSplit()
         case 'energy':
             MODEL_FILE = "models/energy_efficiency_simple_net.pt"
@@ -58,20 +58,24 @@ def main(dataset, run_id, approach, train, bits, solver, samples):
     if train:
         device = torch.accelerator.current_accelerator().type if torch.accelerator.is_available() else 'cpu'
         model.to(device)
-        model.fit(data_split.train, data_split.dev)
+        model.fit(data_split.train, data_split.dev, epochs=50)
         model.cpu()
         model.save(MODEL_FILE)
     else:
         model.load(MODEL_FILE).eval()
-        model_approx = MODEL_CLASS()
-        model_approx.load(MODEL_FILE).eval()
-        model_approx.round(bits=bits)
+        # model_approx = MODEL_CLASS()
+        # model_approx.load(MODEL_FILE).eval()
+        # model_approx.round(bits=bits)
 
         loader_dev = torch.utils.data.DataLoader(data_split.dev, batch_size=64)
-        # print('metric', model.evaluate(loader_dev), model_approx.evaluate(loader_dev))
-        # x, y = data_split.test[50]
-        # print('prediction', pred := model(x).item(), 'true', true := y.item(), 'difference', abs(pred-true) * 10.939755)
+        print('MSE', mse := model.evaluate(loader_dev)[1])
+        print('RMSE', rmse := mse ** 0.5)
+        print('RMSE scaled', rmse * data_split.metadata.error_scaling)
 
+        x, y = data_split.dev[20]
+        print('prediction', pred := model(x).item(), 'true', true := y.item(), 'difference', abs(pred-true))
+
+        return
         eval_net = appmax.evaluation.EvaluationNet(model, model_approx, data_split.metadata.bounds, seq_name=seq_name).eval()
 
         input_sample = data_split.test[0][0]

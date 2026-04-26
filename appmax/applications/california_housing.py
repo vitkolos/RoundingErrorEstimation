@@ -58,3 +58,83 @@ class SimpleNet(appmax.trainable.TrainableModel):
             optimizer=torch.optim.Adam(self.parameters(), lr=0.001),
             metric_fn=torchmetrics.MeanSquaredError(),
         )
+
+
+class HousingMLP(appmax.trainable.TrainableModel):
+    def __init__(self):
+        super().__init__(
+            nn.Sequential(
+                nn.Linear(8, 256),
+                nn.ReLU(),
+                nn.Dropout(0.1),
+
+                nn.Linear(256, 128),
+                nn.ReLU(),
+                nn.Dropout(0.1),
+
+                nn.Linear(128, 64),
+                nn.ReLU(),
+
+                nn.Linear(64, 1)
+            )
+        )
+        self.configure(
+            loss_fn=nn.HuberLoss(),
+            optimizer=torch.optim.AdamW(self.parameters(), lr=1e-3, weight_decay=1e-5),
+            metric_fn=torchmetrics.MeanSquaredError(),
+        )
+
+        def init_weights(module):
+            if isinstance(module, nn.Linear):
+                nn.init.kaiming_normal_(module.weight, nonlinearity='relu')
+                module.bias.data.fill_(0.01)
+
+        self.apply(init_weights)
+
+
+class ResBlock(nn.Module):
+    # https://arxiv.org/abs/2106.11959
+    def __init__(self, size, dropout=0.1):
+        super().__init__()
+        self.block = nn.Sequential(
+            nn.Linear(size, size),
+            nn.BatchNorm1d(size),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+            nn.Linear(size, size),
+            nn.BatchNorm1d(size)
+        )
+        self.relu = nn.ReLU()
+
+    def forward(self, x):
+        return self.relu(x + self.block(x))
+
+
+class HousingResNet(appmax.trainable.TrainableModel):
+    def __init__(self):
+        super().__init__(
+            nn.Sequential(
+                nn.Linear(8, 128),
+                ResBlock(128),
+                ResBlock(128),
+                ResBlock(128),
+                nn.Linear(128, 1)
+            )
+        )
+
+        self.configure(
+            loss_fn=nn.HuberLoss(),
+            optimizer=torch.optim.AdamW(self.parameters(), lr=1e-3, weight_decay=1e-4),
+            metric_fn=torchmetrics.MeanSquaredError(),
+        )
+
+        def init_weights(module):
+            if isinstance(module, nn.Linear):
+                nn.init.kaiming_normal_(module.weight, nonlinearity='relu')
+                if module.bias is not None:
+                    module.bias.data.fill_(0.01)
+            elif isinstance(module, nn.BatchNorm1d):
+                nn.init.constant_(module.weight, 1)
+                nn.init.constant_(module.bias, 0)
+
+        self.apply(init_weights)

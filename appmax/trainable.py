@@ -98,10 +98,12 @@ class TrainableModel(BaseModel):
         loss_fn,
         optimizer,
         metric_fn: torchmetrics.Metric,
+        scheduler = None,
     ):
         self.loss_fn = loss_fn
         self.optimizer = optimizer
         self.metric_fn = metric_fn
+        self.scheduler = scheduler
 
     def fit(
         self,
@@ -135,23 +137,27 @@ class TrainableModel(BaseModel):
 
     def _execute_epoch(self, loader: torch.utils.data.DataLoader, train: bool) -> tuple[float, float]:
         device = self.device
-        loss_sum = torch.tensor(0.0, device=device)
+        loss_sum = 0.0
+        total_samples = 0
         self.metric_fn = self.metric_fn.to(device)
         self.metric_fn.reset()
 
         for X, y in tqdm.tqdm(loader, leave=False):
             X, y = X.to(device), y.to(device)
+            N = X.shape[0]
             pred = self(X)
             loss = self.loss_fn(pred, y)
-            loss_sum += loss
+            loss_sum += loss.item()*N
+            total_samples += N
             self.metric_fn.update(pred, y)
 
             if train:
                 loss.backward()
                 self.optimizer.step()
                 self.optimizer.zero_grad()
+                self.scheduler is not None and self.scheduler.step()
 
-        loss = loss_sum.item() / len(loader)
+        loss = loss_sum / total_samples
         metric = self.metric_fn.compute().item()
         return loss, metric
 
