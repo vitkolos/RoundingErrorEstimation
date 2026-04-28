@@ -4,6 +4,8 @@ import torchmetrics
 import sklearn.datasets
 import sklearn.preprocessing
 import numpy as np
+import matplotlib.pyplot as plt
+
 import appmax.trainable
 
 
@@ -19,6 +21,9 @@ class CaliforniaHousingDataset(torch.utils.data.Dataset):
             metadata.scaler.fit(data)
             metadata.error_scaling = metadata.scaler.scale_[0]
 
+        # log-scale columns AveRooms, AveBedrms, Population, AveOccup
+        # data[:, 3:7] = np.log1p(data[:, 3:7])
+        # standardize
         data = metadata.scaler.transform(data)
 
         if metadata.bounds is None:
