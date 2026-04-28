@@ -7,15 +7,22 @@ import appmax.evaluation
 import appmax.experiment
 
 
+def metrics_callback(ctx, param, value):
+    metrics = appmax.experiment.Metrics(0)
+    for m in value:
+        metrics |= m
+    return metrics
+
+
 @click.command()
 @click.argument('dataset')
 @click.argument('run-id', default='run')
 @click.option('--train', is_flag=True)
-@click.option('-a', '--approach', type=click.Choice(appmax.experiment.Approach, case_sensitive=False), default=appmax.experiment.Approach.STANDARD)
+@click.option('-m', '--metrics', type=click.Choice(appmax.experiment.Metrics, case_sensitive=False), multiple=True, default=appmax.experiment.Metrics.MAXIMUM, callback=metrics_callback)
 @click.option('-b', '--bits', default=8)
 @click.option('-s', '--solver', default=appmax.experiment.SOLVER_DEFAULT)
-@click.option('-n', 'samples', default=-1)
-def main(dataset, run_id, approach, train, bits, solver, samples):
+@click.option('-n', '--samples', default=-1)
+def main(dataset, run_id, metrics, train, bits, solver, samples):
     """
     AppMax \n
     input: evaluation network (original net. & approximated net. combined), data samples \n
@@ -76,10 +83,11 @@ def main(dataset, run_id, approach, train, bits, solver, samples):
         print('prediction', pred := model(x).item(), 'true', true := y.item(), 'difference', abs(pred-true))
 
         return
-        eval_net = appmax.evaluation.EvaluationNet(model, model_approx, data_split.metadata.bounds, seq_name=seq_name).eval()
+        eval_net = appmax.evaluation.EvaluationNet(
+            model, model_approx, data_split.metadata.bounds, seq_name=seq_name).eval()
 
         input_sample = data_split.test[0][0]
-        result = appmax.experiment.single(eval_net, input_sample, approach, solver, debug=True)
+        result = appmax.experiment.single(eval_net, input_sample, metrics, solver, debug=True)
         errors = [result['error_sample'], result['error_nearby'], result['polytope_width']]
         print('errors', *errors)
         print('scaled', *[x*data_split.metadata.error_scaling if x is not None else '' for x in errors])
@@ -92,7 +100,7 @@ def main(dataset, run_id, approach, train, bits, solver, samples):
 
         # with joblib.parallel_config(backend='threading', n_jobs=1):
         #     appmax.experiment.run(f'experiments/{dataset}', run_id, eval_net,
-        #                           data_split.test, approach, first_k=samples)
+        #                           data_split.test, metrics, first_k=samples)
 
 
 if __name__ == '__main__':

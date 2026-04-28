@@ -8,7 +8,7 @@ import tqdm
 
 import appmax.evaluation
 import appmax.optimization
-from appmax.optimization import Approach
+from appmax.optimization import Metrics
 from appmax.solving import SOLVER_DEFAULT
 
 
@@ -17,7 +17,7 @@ def run(
     run_id: str,
     eval_net: appmax.evaluation.EvaluationNet,
     samples: list,
-    approach: Approach,
+    metrics: Metrics,
     first_k: int | None = None,
     use_memory: bool = True,
     show_tensors: bool = False
@@ -44,7 +44,7 @@ def run(
     # setup generators
     wrapped_step = joblib.delayed(wrapped_step)
     para = joblib.Parallel(return_as='generator_unordered')
-    results_gen = para(wrapped_step(run_id, i, approach, eval_net, get_sample(i)) for i in range(total_length))
+    results_gen = para(wrapped_step(run_id, i, metrics, eval_net, get_sample(i)) for i in range(total_length))
     progress_gen = tqdm.tqdm(results_gen, leave=False, total=total_length)
 
     # run & process output
@@ -52,16 +52,7 @@ def run(
     df = df.set_index('sample_index').sort_index()
     df_errors = df[['error_sample', 'error_nearby', 'polytope_width']]
     df_errors.to_csv(experiment_path / f'{run_id}_results.csv')
-    described = df_errors.describe(percentiles=[0.5])
-    weights = df_errors['polytope_width']
-
-    if weights.sum() > 0:
-        described.loc['weighted'] = pd.Series({
-            k: np.average(df_errors[k], weights=weights)
-            for k in ['error_sample', 'error_nearby'] if not df_errors[k].isna().any()
-        })
-
-    described.to_csv(experiment_path / f'{run_id}_described.csv')
+    describe(df_errors).to_csv(experiment_path / f'{run_id}_described.csv')
 
     if not df['input_nearby'].isna().any():
         input_nearby_stack = torch.stack(df['input_nearby'].to_list())
@@ -77,10 +68,23 @@ def run(
                 print(i, 'nearby', *ten2strs(tensor_nearby), sep='\t', file=f)
 
 
-def step(run_id: str, sample_index: int, approach: Approach, eval_net: appmax.evaluation.EvaluationNet, input_sample: torch.Tensor) -> dict:
+def describe(df_errors: pd.DataFrame) -> pd.DataFrame:
+    described = df_errors.describe(percentiles=[0.5])
+    weights = df_errors['polytope_width']
+
+    if weights.sum() > 0:
+        described.loc['weighted'] = pd.Series({
+            k: np.average(df_errors[k], weights=weights)
+            for k in ['error_sample', 'error_nearby'] if not df_errors[k].isna().any()
+        })
+
+    return described
+
+
+def step(run_id: str, sample_index: int, metrics: Metrics, eval_net: appmax.evaluation.EvaluationNet, input_sample: torch.Tensor) -> dict:
     """function for parallel execution
-    (run_id & sample_index & approach are used for caching, eval_net & input_sample are ignored)"""
-    result = single(eval_net, input_sample, approach)
+    (run_id & sample_index & metrics are used for caching, eval_net & input_sample are ignored)"""
+    result = single(eval_net, input_sample, metrics)
     result['sample_index'] = sample_index
     return result
 
@@ -88,7 +92,7 @@ def step(run_id: str, sample_index: int, approach: Approach, eval_net: appmax.ev
 def single(
     eval_net: appmax.evaluation.EvaluationNet,
     input_sample: torch.Tensor,
-    approach: Approach,
+    metrics: Metrics,
     solver: str = SOLVER_DEFAULT,
     debug: bool = False
 ) -> dict:
@@ -97,7 +101,7 @@ def single(
     with torch.no_grad():
         error_sample = eval_net(input_sample_b).item()
 
-    result = appmax.optimization.find_appmax(eval_net, input_sample, solver, approach, debug=debug)
+    result = appmax.optimization.analyze_linear_region(eval_net, input_sample, solver, metrics, debug=debug)
 
     return {
         'input_sample': input_sample,
@@ -105,4 +109,5 @@ def single(
         'input_nearby': result.x,
         'error_nearby': result.fun,
         'polytope_width': result.width,
+        'integral': result.integral,
     }

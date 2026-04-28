@@ -1,8 +1,7 @@
-from typing import NamedTuple
+from dataclasses import dataclass
 import enum
 
 import torch
-import numpy as np
 
 import appmax.neurons
 import appmax.evaluation
@@ -11,21 +10,22 @@ from appmax.solving import Polytope, LinearProgram
 from appmax.trainable import Bounds
 
 
-class Approach(enum.Enum):
-    STANDARD = enum.auto()
-    WEIGHTED = enum.auto()
+class Metrics(enum.Flag):
+    MAXIMUM = enum.auto()
+    WIDTH = enum.auto()
     INTEGRAL = enum.auto()
 
 
-class PolytopeResult(NamedTuple):
-    x: torch.Tensor | None  # point where the error function reaches its maximum
-    fun: float | None  # value of the error function (in its maximum)
-    width: float | None  # polytope mean width
+@dataclass
+class PolytopeResult:
+    x: torch.Tensor | None = None  # point where the error function reaches its maximum
+    fun: float | None = None  # value of the error function (in its maximum)
+    width: float | None = None  # polytope mean width
+    integral: float | None = None  # mean width of the extended polytope
 
 
-def find_appmax(eval_net: appmax.evaluation.EvaluationNet, sample: torch.Tensor, solver: str, approach: Approach = Approach.STANDARD, debug: bool = False) -> PolytopeResult:
-    """'sample' needs to be a single sample (not a batch);\n
-    note that in weighted approach, the error is not weighted yet (weight is returned separately)"""
+def analyze_linear_region(eval_net: appmax.evaluation.EvaluationNet, sample: torch.Tensor, solver: str, metrics: Metrics = Metrics.MAXIMUM, debug: bool = False) -> PolytopeResult:
+    """'sample' needs to be a single sample (not a batch)"""
     constraints = appmax.neurons.Constraints()
     message = appmax.neurons.Message(sample)
     message = appmax.neurons.collect(eval_net, message, constraints)
@@ -34,17 +34,20 @@ def find_appmax(eval_net: appmax.evaluation.EvaluationNet, sample: torch.Tensor,
     if debug:
         check_feasibility(sample, lp)
 
-    sample_found, err_found, width = None, None, None
+    result = PolytopeResult()
 
-    if approach != Approach.INTEGRAL:
-        sample_found, err_found = appmax.solving.solve(lp, solver, verbose=debug)
-        sample_found = sample_found.reshape_as(sample)
+    if Metrics.MAXIMUM in metrics:
+        result.x, result.fun = appmax.solving.solve(lp, solver, verbose=debug)
+        result.x = result.x.reshape_as(sample)
 
-    if approach != Approach.STANDARD:
-        measured_polytope = prepare_integral(lp) if approach == Approach.INTEGRAL else lp
-        width = polytope_widths(measured_polytope, solver).mean().item()
+    if Metrics.WIDTH in metrics:
+        result.width = polytope_widths(lp, solver).mean().item()
 
-    return PolytopeResult(sample_found, err_found, width)
+    if Metrics.INTEGRAL in metrics:
+        extended_polytope = prepare_integral(lp)
+        result.integral = polytope_widths(extended_polytope, solver).mean().item()
+
+    return result
 
 
 def prepare_lp(message: appmax.neurons.Message, constraints: appmax.neurons.Constraints, bounds: Bounds) -> LinearProgram:
@@ -71,6 +74,7 @@ def prepare_lp(message: appmax.neurons.Message, constraints: appmax.neurons.Cons
 
 
 def prepare_integral(lp: LinearProgram) -> Polytope:
+    """generates an extended polytope based on a linear program"""
     # add one variable (error is always non-negative)
     A_ub = torch.hstack([lp.A_ub, torch.zeros(lp.A_ub.shape[0], 1)])
     bounds = Bounds(lp.bounds.seq + [(0.0, None)])
@@ -83,7 +87,8 @@ def prepare_integral(lp: LinearProgram) -> Polytope:
     return Polytope(bounds, A_ub, b_ub)
 
 
-def polytope_widths(polytope: Polytope, solver: str, num_directions: int = 100, cummulative: bool = False) -> torch.Tensor:
+def polytope_widths(polytope: Polytope, solver: str, num_directions: int = 100, cummulative_avg: bool = False) -> torch.Tensor:
+    """returns widths of the polytope computed from many random directions (or the cummulative average in each step)"""
     # variables == dimensions
     num_variables = polytope.A_ub.shape[1]
     directions = torch.randn(num_directions, num_variables)
@@ -91,7 +96,7 @@ def polytope_widths(polytope: Polytope, solver: str, num_directions: int = 100, 
     lp = LinearProgram(polytope.bounds, polytope.A_ub, polytope.b_ub, objective=torch.empty(0))
     results = appmax.solving.solve(lp, solver, multiple_objectives=directions)
     widths = torch.tensor([(res_max.fun - res_min.fun) for res_min, res_max in results])
-    return widths if not cummulative else widths.cumsum(dim=0) / torch.arange(1, num_directions+1)
+    return widths if not cummulative_avg else widths.cumsum(dim=0) / torch.arange(1, num_directions+1)
 
 
 def check_feasibility(sample: torch.Tensor, polytope: Polytope, abs_tol: float = 1e-6):
@@ -99,7 +104,8 @@ def check_feasibility(sample: torch.Tensor, polytope: Polytope, abs_tol: float =
     sample_flat = sample.flatten()
 
     if len(polytope.bounds.seq) != sample.numel():
-        raise RuntimeError(f'{len(polytope.bounds.seq)} bounds were provided, but there are {sample.numel()} input neurons')
+        raise RuntimeError(
+            f'{len(polytope.bounds.seq)} bounds were provided, but there are {sample.numel()} input neurons')
 
     too_low = torch.nonzero(sample_flat < torch.from_numpy(polytope.bounds.lb)).flatten().tolist()
     too_high = torch.nonzero(sample_flat > torch.from_numpy(polytope.bounds.ub)).flatten().tolist()
