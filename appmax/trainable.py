@@ -99,23 +99,24 @@ class TrainableModel(BaseModel):
         optimizer,
         metric_fn: torchmetrics.Metric,
         scheduler = None,
+        epochs = 20,
     ):
         self.loss_fn = loss_fn
         self.optimizer = optimizer
         self.metric_fn = metric_fn
         self.scheduler = scheduler
+        self.epochs = epochs
 
     def fit(
         self,
         data_train: Dataset,
         data_dev: Dataset,
         batch_size: int = 64,
-        epochs: int = 20,
     ):
         loader_train = torch.utils.data.DataLoader(data_train, batch_size=batch_size)
         loader_dev = torch.utils.data.DataLoader(data_dev, batch_size=batch_size)
 
-        for epoch in range(1, epochs+1):
+        for epoch in range(1, self.epochs+1):
             loss_train, metric_train = self.train_epoch(loader_train)
             loss_dev, metric_dev = self.evaluate(loader_dev)
             print(f"epoch {epoch} done | train: loss {loss_train:.2f}, metric {metric_train:.2f}",

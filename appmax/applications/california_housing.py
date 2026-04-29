@@ -87,6 +87,7 @@ class HousingMLP(appmax.trainable.TrainableModel):
             loss_fn=nn.HuberLoss(),
             optimizer=torch.optim.AdamW(self.parameters(), lr=1e-3, weight_decay=1e-5),
             metric_fn=torchmetrics.MeanSquaredError(),
+            epochs=50,
         )
 
         def init_weights(module):

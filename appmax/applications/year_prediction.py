@@ -49,7 +49,9 @@ class YearPredictionSplit(appmax.trainable.DataSplit):
         self.metadata = appmax.trainable.Metadata()
         train_dev = YearPredictionDataset(self.metadata, train=True)
         self.test = YearPredictionDataset(self.metadata, train=False)
-        self.train, self.dev = torch.utils.data.random_split(train_dev, [4/5, 1/5])
+        DEV_START = len(train_dev)-10_000
+        self.train = torch.utils.data.Subset(train_dev, range(0, DEV_START))
+        self.dev = torch.utils.data.Subset(train_dev, range(DEV_START, len(train_dev)))
 
 
 class YearNet(appmax.trainable.TrainableModel):
@@ -69,4 +71,5 @@ class YearNet(appmax.trainable.TrainableModel):
             loss_fn=torch.nn.MSELoss(),
             optimizer=torch.optim.Adam(self.parameters(), lr=0.001),
             metric_fn=torchmetrics.MeanSquaredError(),
+            epochs=50,
         )

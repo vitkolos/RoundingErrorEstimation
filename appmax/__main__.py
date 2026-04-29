@@ -65,7 +65,7 @@ def main(dataset, run_id, metrics, train, bits, solver, samples):
     if train:
         device = torch.accelerator.current_accelerator().type if torch.accelerator.is_available() else 'cpu'
         model.to(device)
-        model.fit(data_split.train, data_split.dev, epochs=50)
+        model.fit(data_split.train, data_split.dev)
         model.cpu()
         model.save(MODEL_FILE)
     else:
