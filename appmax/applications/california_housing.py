@@ -3,8 +3,8 @@ from torch import nn
 import torchmetrics
 import sklearn.datasets
 import sklearn.preprocessing
+import sklearn.model_selection
 import numpy as np
-import matplotlib.pyplot as plt
 
 import appmax.trainable
 
@@ -12,17 +12,12 @@ import appmax.trainable
 class CaliforniaHousingDataset(torch.utils.data.Dataset):
     """https://scikit-learn.org/stable/datasets/real_world.html#california-housing-dataset"""
 
-    def __init__(self, metadata: appmax.trainable.Metadata):
-        data, target = sklearn.datasets.fetch_california_housing(data_home='datasets', return_X_y=True)
-        data = np.column_stack((target, data))
-
+    def __init__(self, data: np.ndarray, metadata: appmax.trainable.Metadata):
         if metadata.scaler is None:
             metadata.scaler = sklearn.preprocessing.StandardScaler()
             metadata.scaler.fit(data)
             metadata.error_scaling = metadata.scaler.scale_[0]
 
-        # log-scale columns AveRooms, AveBedrms, Population, AveOccup
-        # data[:, 3:7] = np.log1p(data[:, 3:7])
         # standardize
         data = metadata.scaler.transform(data)
 
@@ -43,9 +38,14 @@ class CaliforniaHousingDataset(torch.utils.data.Dataset):
 
 class CaliforniaHousingSplit(appmax.trainable.DataSplit):
     def __init__(self):
+        data, target = sklearn.datasets.fetch_california_housing(data_home='datasets', return_X_y=True)
+        data = np.column_stack((target, data))
+        data_train, data_test = sklearn.model_selection.train_test_split(data, test_size=1/8, random_state=42)
+
         self.metadata = appmax.trainable.Metadata()
-        dataset = CaliforniaHousingDataset(self.metadata)
-        self.train, self.dev, self.test = torch.utils.data.random_split(dataset, [6/8, 1/8, 1/8])
+        train_dev = CaliforniaHousingDataset(data_train, self.metadata)
+        self.test = CaliforniaHousingDataset(data_test, self.metadata)
+        self.train, self.dev = torch.utils.data.random_split(train_dev, [6/7, 1/7])
 
 
 class SimpleNet(appmax.trainable.TrainableModel):
@@ -93,53 +93,5 @@ class HousingMLP(appmax.trainable.TrainableModel):
             if isinstance(module, nn.Linear):
                 nn.init.kaiming_normal_(module.weight, nonlinearity='relu')
                 module.bias.data.fill_(0.01)
-
-        self.apply(init_weights)
-
-
-class ResBlock(nn.Module):
-    # https://arxiv.org/abs/2106.11959
-    def __init__(self, size, dropout=0.1):
-        super().__init__()
-        self.block = nn.Sequential(
-            nn.Linear(size, size),
-            nn.BatchNorm1d(size),
-            nn.ReLU(),
-            nn.Dropout(dropout),
-            nn.Linear(size, size),
-            nn.BatchNorm1d(size)
-        )
-        self.relu = nn.ReLU()
-
-    def forward(self, x):
-        return self.relu(x + self.block(x))
-
-
-class HousingResNet(appmax.trainable.TrainableModel):
-    def __init__(self):
-        super().__init__(
-            nn.Sequential(
-                nn.Linear(8, 128),
-                ResBlock(128),
-                ResBlock(128),
-                ResBlock(128),
-                nn.Linear(128, 1)
-            )
-        )
-
-        self.configure(
-            loss_fn=nn.HuberLoss(),
-            optimizer=torch.optim.AdamW(self.parameters(), lr=1e-3, weight_decay=1e-4),
-            metric_fn=torchmetrics.MeanSquaredError(),
-        )
-
-        def init_weights(module):
-            if isinstance(module, nn.Linear):
-                nn.init.kaiming_normal_(module.weight, nonlinearity='relu')
-                if module.bias is not None:
-                    module.bias.data.fill_(0.01)
-            elif isinstance(module, nn.BatchNorm1d):
-                nn.init.constant_(module.weight, 1)
-                nn.init.constant_(module.bias, 0)
 
         self.apply(init_weights)
