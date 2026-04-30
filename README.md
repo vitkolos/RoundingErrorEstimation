@@ -1,5 +1,19 @@
-# RoundingErrorEstimation
+# Rounding Error Estimation
 
+## Setup
 
-* `propagate_intervals` - the code for experiment from the Section 3
-*  `lin_opt` - the code for linear optimisation experiments, Section 6 (Experiments) 
+```sh
+# download the repository
+git clone https://github.com/vitkolos/RoundingErrorEstimation.git
+cd RoundingErrorEstimation
+
+# install dependencies (using one of the following commands)
+uv sync             # if uv is available
+pip install -e .    # otherwise
+```
+
+## Contents
+
+- `appmax` – implementation of the AppMax method
+- `tests` covering most of the `appmax` implementation
+- `lin_opt_replication` – fragments from the [original repository](https://github.com/PetraVidnerova/RoundingErrorEstimation/)
