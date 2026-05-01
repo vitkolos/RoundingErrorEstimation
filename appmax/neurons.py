@@ -62,13 +62,15 @@ def collect(module: nn.Module, message: Message, constraints: Constraints) -> Me
             return collect_relu(module, message, constraints)
         case nn.Linear():
             return collect_linear(module, message, constraints)
+        case nn.BatchNorm1d():
+            return collect_batch_norm1d(module, message, constraints)
         case nn.Conv2d():
             return collect_conv2d(module, message, constraints)
         case nn.MaxPool2d():
             return collect_max_pool2d(module, message, constraints)
         case nn.Dropout():
             if module.training:
-                warnings.warn('Dropout layer is in training mode')
+                raise RuntimeError('Dropout layer is in training mode')
             return message
         case nn.Flatten():
             return message.apply(module)
@@ -112,6 +114,27 @@ def collect_linear(linear: nn.Linear, message: Message, constraints: Constraints
     # s_bias = s_bias @ weight.t() + bias
     message.s_bias = linear(message.s_bias)
 
+    return message
+
+
+def collect_batch_norm1d(batch_norm1d: nn.BatchNorm1d, message: Message, constraints: Constraints) -> Message:
+    if batch_norm1d.training:
+        raise RuntimeError('BatchNorm1d layer is in training mode')
+    elif not batch_norm1d.track_running_stats:
+        raise NotImplementedError('collect_batch_norm1d does not support track_running_stats=False')
+
+    message.sample = batch_norm1d(message.sample)
+    message.s_weight = F.batch_norm(
+        message.s_weight,
+        running_mean=torch.zeros_like(batch_norm1d.running_mean),
+        running_var=batch_norm1d.running_var,
+        weight=batch_norm1d.weight,
+        bias=None,
+        training=False,
+        momentum=0.0,  # does not matter
+        eps=batch_norm1d.eps,
+    )
+    message.s_bias = batch_norm1d(message.s_bias)
     return message
 
 
