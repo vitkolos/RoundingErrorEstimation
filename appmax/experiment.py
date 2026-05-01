@@ -5,15 +5,14 @@ import joblib
 import pandas as pd
 import numpy as np
 import tqdm
+import matplotlib.pyplot as plt
 
 import appmax.evaluation
 import appmax.optimization
-from appmax.optimization import Metrics
-from appmax.trainable import Dataset
-from appmax.solving import solver_config
+import appmax.trainable
 
 
-def get_samples(dataset: Dataset, first_k: int | None = None) -> list[torch.Tensor]:
+def get_samples(dataset: appmax.trainable.Dataset, first_k: int | None = None) -> list[torch.Tensor]:
     total_length = len(dataset)  # type: ignore
 
     if first_k is not None and first_k > 0:
@@ -28,7 +27,7 @@ def run(
     run_id: str,
     eval_net: appmax.evaluation.EvaluationNet,
     samples: list[torch.Tensor],
-    metrics: Metrics,
+    metrics: appmax.optimization.Metrics,
     use_memory: bool = True,
     show_tensors: bool = False
 ):
@@ -99,7 +98,13 @@ def describe(df_results: pd.DataFrame) -> pd.DataFrame:
     return described
 
 
-def step(run_id: str, sample_index: int, metrics: Metrics, eval_net: appmax.evaluation.EvaluationNet, input_sample: torch.Tensor) -> dict:
+def step(
+    run_id: str,
+    sample_index: int,
+    metrics: appmax.optimization.Metrics,
+    eval_net: appmax.evaluation.EvaluationNet,
+    input_sample: torch.Tensor
+) -> dict:
     """function for parallel execution
     (run_id & sample_index & metrics are used for caching, eval_net & input_sample are ignored)"""
     result = single(eval_net, input_sample, metrics)
@@ -110,7 +115,7 @@ def step(run_id: str, sample_index: int, metrics: Metrics, eval_net: appmax.eval
 def single(
     eval_net: appmax.evaluation.EvaluationNet,
     input_sample: torch.Tensor,
-    metrics: Metrics,
+    metrics: appmax.optimization.Metrics,
     debug: bool = False
 ) -> dict:
     input_sample_b = input_sample.unsqueeze(0)  # sample -> batch (to support any PyTorch network)
@@ -130,10 +135,22 @@ def single(
     }
 
 
-def plot_widths(eval_net: appmax.evaluation.EvaluationNet, samples: list, num_directions: int):
-    for sample in samples:
+def plot_widths(experiment_path: Path | str, eval_net: appmax.evaluation.EvaluationNet, samples: list[torch.Tensor], num_directions: int):
+    experiment_path = Path(experiment_path)
+    experiment_path.mkdir(parents=True, exist_ok=True)
+
+    def plot_chart(name, ys):
+        plt.plot(torch.arange(1, num_directions+1), ys)
+        line = {'c': 'black', 'ls': 'dotted'}
+        plt.axvline(100, **line)
+        plt.axvline(200, **line)
+        plt.savefig(experiment_path / f'{name}_{i+1:02d}.png')
+        plt.close()
+
+    for i, sample in enumerate(tqdm.tqdm(samples, leave=False)):
         lp = appmax.optimization.lp_from_eval_net(eval_net, sample)
-        polytope_widths = appmax.optimization.polytope_widths(lp, num_directions=num_directions)
+        polytope_width = appmax.optimization.polytope_widths(lp, num_directions, cummulative_avg=True)
+        plot_chart('polytope', polytope_width)
         extended_polytope = appmax.optimization.prepare_integral(lp)
-        integral_widths = appmax.optimization.polytope_widths(extended_polytope, num_directions=num_directions)
-        # TODO: plot two charts
+        integral_width = appmax.optimization.polytope_widths(extended_polytope, num_directions, cummulative_avg=True)
+        plot_chart('integral', integral_width)

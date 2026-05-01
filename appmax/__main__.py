@@ -5,10 +5,12 @@ import click
 from appmax.applications import california_housing, mnist, energy_efficiency, year_prediction
 import appmax.evaluation
 import appmax.experiment
+import appmax.solving
+import appmax.optimization
 
 
 def metrics_callback(ctx, param, value):
-    metrics = appmax.experiment.Metrics(0)
+    metrics = appmax.optimization.Metrics(0)
     for m in value:
         metrics |= m
     return metrics
@@ -18,7 +20,7 @@ def metrics_callback(ctx, param, value):
 @click.argument('dataset')
 @click.argument('run-id', default='run')
 @click.option('--train', is_flag=True)
-@click.option('-m', '--metrics', type=click.Choice(appmax.experiment.Metrics, case_sensitive=False), multiple=True, default=appmax.experiment.Metrics.MAXIMUM, callback=metrics_callback)
+@click.option('-m', '--metrics', type=click.Choice(appmax.optimization.Metrics, case_sensitive=False), multiple=True, default=appmax.optimization.Metrics.MAXIMUM, callback=metrics_callback)
 @click.option('-b', '--bits', default=8)
 @click.option('-s', '--solver', default='')
 @click.option('-n', '--num_samples', default=-1)
@@ -86,7 +88,7 @@ def main(dataset, run_id, metrics, train, bits, solver, num_samples):
         eval_net = appmax.evaluation.EvaluationNet(model, model_approx, data_split.metadata, seq_name=seq_name).eval()
 
         input_sample = data_split.test[0][0]
-        with appmax.experiment.solver_config(solver):
+        with appmax.solving.solver_config(solver):
             result = appmax.experiment.single(eval_net, input_sample, metrics, debug=True)
         errors = [result['error_sample'], result['error_nearby'], result['polytope_width']]
         print('errors', *errors)
@@ -99,9 +101,12 @@ def main(dataset, run_id, metrics, train, bits, solver, num_samples):
         # print(f"{max=}, {avg=}")
 
         samples = appmax.experiment.get_samples(data_split.test, num_samples)
+        samples_dev = appmax.experiment.get_samples(data_split.dev, num_samples)
 
-        with joblib.parallel_config(backend='threading', n_jobs=1), appmax.experiment.solver_config(solver):
-            appmax.experiment.run(f'experiments/{dataset}', run_id, eval_net, samples, metrics)
+        # with joblib.parallel_config(backend='threading', n_jobs=1), appmax.solving.solver_config(solver):
+        #     appmax.experiment.run(f'experiments/{dataset}', run_id, eval_net, samples, metrics)
+
+        appmax.experiment.plot_widths(f'experiments/{dataset}/widths', eval_net, samples_dev, num_directions=300)
 
 
 if __name__ == '__main__':

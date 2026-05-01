@@ -7,7 +7,6 @@ import torch
 from torch import nn
 from torch.utils.data import Dataset
 import torchmetrics
-import sklearn.base
 
 import appmax.quantization
 
