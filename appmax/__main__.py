@@ -66,6 +66,7 @@ def main(dataset, run_id, metrics, train, bits, solver, num_samples):
 
     if train:
         device = torch.accelerator.current_accelerator().type if torch.accelerator.is_available() else 'cpu'
+        print('accelerator', device)
         model.to(device)
         model.fit(data_split.train, data_split.dev)
         model.cpu()
@@ -82,7 +83,7 @@ def main(dataset, run_id, metrics, train, bits, solver, num_samples):
         print('RMSE scaled', rmse * data_split.metadata.error_scaling)
 
         x, y = data_split.dev[20]
-        print('prediction', pred := model(x).item(), 'true', true := y.item(), 'difference', abs(pred-true))
+        print('prediction', pred := model(x.unsqueeze(0)).item(), 'true', true := y.item(), 'difference', abs(pred-true))
 
         # return
         eval_net = appmax.evaluation.EvaluationNet(model, model_approx, data_split.metadata, seq_name=seq_name).eval()
@@ -106,7 +107,7 @@ def main(dataset, run_id, metrics, train, bits, solver, num_samples):
         # with joblib.parallel_config(backend='threading', n_jobs=1), appmax.solving.solver_config(solver):
         #     appmax.experiment.run(f'experiments/{dataset}', run_id, eval_net, samples, metrics)
 
-        appmax.experiment.plot_widths(f'experiments/{dataset}/widths', eval_net, samples_dev, num_directions=300)
+        # appmax.experiment.plot_widths(f'experiments/{dataset}/widths', eval_net, samples_dev, num_directions=300)
 
 
 if __name__ == '__main__':

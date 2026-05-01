@@ -2,20 +2,23 @@ import pandas as pd
 import torch
 from torch import nn
 import torchmetrics
+import numpy as np
 import sklearn.preprocessing
 import appmax.trainable
 
 DATA_HOME = 'datasets'
 
 
+
 class YearPredictionDataset(torch.utils.data.Dataset):
     """https://web.archive.org/web/20260405131946/https://archive.ics.uci.edu/dataset/203/yearpredictionmsd"""
+    # train: first 463,715 examples
+    # test: last 51,630 examples
+    TD_LEN = 463_715
+    T_LEN = TD_LEN - 10_000
 
     def __init__(self, metadata: appmax.trainable.Metadata, train: bool):
-        # train: first 463,715 examples
-        # test: last 51,630 examples
-        T_LEN = 463_715
-        rows = {('nrows' if train else 'skiprows'): T_LEN}
+        rows = {('nrows' if train else 'skiprows'): self.TD_LEN}
         data = pd.read_csv(f'{DATA_HOME}/YearPredictionMSD.txt', header=None, **rows).to_numpy()  # type: ignore
 
         if metadata.scaler is None:
@@ -49,27 +52,42 @@ class YearPredictionSplit(appmax.trainable.DataSplit):
         self.metadata = appmax.trainable.Metadata()
         train_dev = YearPredictionDataset(self.metadata, train=True)
         self.test = YearPredictionDataset(self.metadata, train=False)
-        DEV_START = len(train_dev)-10_000
-        self.train = torch.utils.data.Subset(train_dev, range(0, DEV_START))
-        self.dev = torch.utils.data.Subset(train_dev, range(DEV_START, len(train_dev)))
+        self.train = torch.utils.data.Subset(train_dev, range(0, YearPredictionDataset.T_LEN))
+        self.dev = torch.utils.data.Subset(train_dev, range(YearPredictionDataset.T_LEN, len(train_dev)))
 
 
 class YearNet(appmax.trainable.TrainableModel):
     def __init__(self):
+        dropout = 0.2
         super().__init__(
             nn.Sequential(
-                nn.Linear(90, 512),
+                nn.Linear(90, dim := 512),
+                nn.BatchNorm1d(dim),
                 nn.ReLU(),
-                nn.Dropout(0.5),
-                nn.Linear(512, 256),
+                nn.Dropout(dropout),
+                nn.Linear(dim, dim := 256),
+                nn.BatchNorm1d(dim),
                 nn.ReLU(),
-                nn.Dropout(0.5),
-                nn.Linear(256, 1),
+                nn.Dropout(dropout),
+                nn.Linear(dim, dim := 128),
+                nn.BatchNorm1d(dim),
+                nn.ReLU(),
+                nn.Dropout(dropout),
+                nn.Linear(dim, 1),
             )
         )
         self.configure(
             loss_fn=torch.nn.MSELoss(),
-            optimizer=torch.optim.Adam(self.parameters(), lr=0.001),
+            optimizer=torch.optim.AdamW(self.parameters(), lr=3e-4, weight_decay=1e-5),
             metric_fn=torchmetrics.MeanSquaredError(),
             epochs=50,
+            batch_size=512,
         )
+        self.scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(self.optimizer, self.epochs * (YearPredictionDataset.T_LEN // self.batch_size))
+
+        def init_weights(module):
+            if isinstance(module, nn.Linear):
+                nn.init.kaiming_normal_(module.weight, nonlinearity='relu')
+                module.bias.data.fill_(0.01)
+
+        self.apply(init_weights)
