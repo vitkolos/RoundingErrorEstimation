@@ -9,31 +9,34 @@ import tqdm
 import appmax.evaluation
 import appmax.optimization
 from appmax.optimization import Metrics
-from appmax.solving import SOLVER_DEFAULT
+from appmax.trainable import Dataset
+from appmax.solving import solver_config
+
+
+def get_samples(dataset: Dataset, first_k: int | None = None) -> list[torch.Tensor]:
+    total_length = len(dataset)  # type: ignore
+
+    if first_k is not None and first_k > 0:
+        total_length = min(total_length, first_k)
+
+    # clone to break connection with Storage
+    return [dataset[i][0].clone() for i in range(total_length)]
 
 
 def run(
     experiment_path: Path | str,
     run_id: str,
     eval_net: appmax.evaluation.EvaluationNet,
-    samples: list,
+    samples: list[torch.Tensor],
     metrics: Metrics,
-    first_k: int | None = None,
     use_memory: bool = True,
     show_tensors: bool = False
 ):
-    # prepare dataset
-    def get_sample(i): return samples[i][0].clone()  # clone to break connection with Storage
-    total_length = len(samples)
-
-    if first_k is not None and first_k > 0:
-        total_length = min(total_length, first_k)
-
     # prepare output dir
     experiment_path = Path(experiment_path)
     experiment_path.mkdir(parents=True, exist_ok=True)
     with (experiment_path / '_runs.txt').open('a') as f:
-        print(run_id, file=f)
+        print(run_id, len(samples), eval_net.metadata.error_scaling, sep='\t', file=f)
 
     # activate memory (optional)
     wrapped_step = step
@@ -44,20 +47,29 @@ def run(
     # setup generators
     wrapped_step = joblib.delayed(wrapped_step)
     para = joblib.Parallel(return_as='generator_unordered')
-    results_gen = para(wrapped_step(run_id, i, metrics, eval_net, get_sample(i)) for i in range(total_length))
-    progress_gen = tqdm.tqdm(results_gen, leave=False, total=total_length)
+    results_gen = para(wrapped_step(run_id, i, metrics, eval_net, sample) for i, sample in enumerate(samples))
+    progress_gen = tqdm.tqdm(results_gen, leave=False, total=len(samples))
 
     # run & process output
     df = pd.DataFrame(progress_gen)
     df = df.set_index('sample_index').sort_index()
-    df_errors = df[['error_sample', 'error_nearby', 'polytope_width']]
-    df_errors.to_csv(experiment_path / f'{run_id}_results.csv')
-    describe(df_errors).to_csv(experiment_path / f'{run_id}_described.csv')
+    error_cols = ['error_sample', 'error_nearby']
+    df_results = df[error_cols + ['polytope_width', 'integral']]
+    df_results.to_csv(experiment_path / f'{run_id}_results.csv')
+    df_described = describe(df_results)
+    df_described.to_csv(experiment_path / f'{run_id}_described.csv')
 
+    # unscale the errors and integrals
+    df_results_unscaled = df_results.copy()
+    df_results_unscaled.loc[:, error_cols + ['integral']] *= eval_net.metadata.error_scaling
+    describe(df_results_unscaled).to_csv(experiment_path / f'{run_id}_described_unscaled.csv')
+
+    # save found points where error is maximum
     if not df['input_nearby'].isna().any():
         input_nearby_stack = torch.stack(df['input_nearby'].to_list())
         torch.save(input_nearby_stack, experiment_path / f'{run_id}_tensors.pt')
 
+    # show both the sample and nearby points
     if show_tensors:
         def ten2strs(tensor):
             return [f'{x:.2f}' for x in tensor.flatten().tolist()]
@@ -68,15 +80,21 @@ def run(
                 print(i, 'nearby', *ten2strs(tensor_nearby), sep='\t', file=f)
 
 
-def describe(df_errors: pd.DataFrame) -> pd.DataFrame:
-    described = df_errors.describe(percentiles=[0.5])
-    weights = df_errors['polytope_width']
+def describe(df_results: pd.DataFrame) -> pd.DataFrame:
+    described = df_results.describe(percentiles=[0.5])
+    weights = df_results.get('polytope_width')
 
-    if weights.sum() > 0:
-        described.loc['weighted'] = pd.Series({
-            k: np.average(df_errors[k], weights=weights)
-            for k in ['error_sample', 'error_nearby'] if not df_errors[k].isna().any()
-        })
+    if weights is not None and weights.sum() > 0:
+        weighted = {
+            k: np.average(df_results[k], weights=weights)
+            for k in ['error_sample', 'error_nearby'] if not df_results[k].isna().any()
+        }
+
+        if not df_results['integral'].isna().any():
+            # integrals are already "weighted"
+            weighted['integral'] = df_results['integral'].sum() / weights.sum()
+
+        described.loc['weighted'] = pd.Series(weighted)
 
     return described
 
@@ -93,7 +111,6 @@ def single(
     eval_net: appmax.evaluation.EvaluationNet,
     input_sample: torch.Tensor,
     metrics: Metrics,
-    solver: str = SOLVER_DEFAULT,
     debug: bool = False
 ) -> dict:
     input_sample_b = input_sample.unsqueeze(0)  # sample -> batch (to support any PyTorch network)
@@ -101,7 +118,7 @@ def single(
     with torch.no_grad():
         error_sample = eval_net(input_sample_b).item()
 
-    result = appmax.optimization.analyze_linear_region(eval_net, input_sample, solver, metrics, debug=debug)
+    result = appmax.optimization.analyze_linear_region(eval_net, input_sample, metrics, debug=debug)
 
     return {
         'input_sample': input_sample,
@@ -111,3 +128,12 @@ def single(
         'polytope_width': result.width,
         'integral': result.integral,
     }
+
+
+def plot_widths(eval_net: appmax.evaluation.EvaluationNet, samples: list, num_directions: int):
+    for sample in samples:
+        lp = appmax.optimization.lp_from_eval_net(eval_net, sample)
+        polytope_widths = appmax.optimization.polytope_widths(lp, num_directions=num_directions)
+        extended_polytope = appmax.optimization.prepare_integral(lp)
+        integral_widths = appmax.optimization.polytope_widths(extended_polytope, num_directions=num_directions)
+        # TODO: plot two charts

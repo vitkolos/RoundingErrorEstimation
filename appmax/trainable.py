@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from typing import Any
 
 import tqdm
 import numpy as np
@@ -25,7 +26,7 @@ class Bounds:
 @dataclass
 class Metadata:
     bounds: Bounds | None = None
-    scaler: sklearn.base.TransformerMixin | None = None
+    scaler: Any = None
     error_scaling: float = 1.0
     sl_data: slice = slice(1, None)
     sl_target: slice = slice(0, 1)
@@ -55,7 +56,7 @@ class DataSplit:
     train: Dataset
     dev: Dataset
     test: Dataset
-    bounds: Bounds
+    metadata: Metadata
 
 
 class BaseModel(nn.Module):
@@ -98,8 +99,8 @@ class TrainableModel(BaseModel):
         loss_fn,
         optimizer,
         metric_fn: torchmetrics.Metric,
-        scheduler = None,
-        epochs = 20,
+        scheduler=None,
+        epochs=20,
     ):
         self.loss_fn = loss_fn
         self.optimizer = optimizer

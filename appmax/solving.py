@@ -1,8 +1,9 @@
 import dataclasses
 from typing import NamedTuple, overload
+from contextvars import ContextVar
+from contextlib import contextmanager
 
 import torch
-import numpy as np
 import tqdm
 import scipy.optimize
 import gurobipy
@@ -32,6 +33,17 @@ class OptimizationResult(NamedTuple):
 MultipleResults = list[tuple[OptimizationResult, OptimizationResult]]
 
 SOLVER_DEFAULT = 'highs'
+_active_solver = ContextVar('active_solver', default=SOLVER_DEFAULT)
+
+
+@contextmanager
+def solver_config(solver_name: str):
+    solver_name = solver_name.lower()  # conver to lowercase
+    token = _active_solver.set(solver_name if solver_name else SOLVER_DEFAULT)
+    try:
+        yield
+    finally:
+        _active_solver.reset(token)
 
 
 def get_min_max_lps(lp: LinearProgram, objective: torch.Tensor) -> tuple[LinearProgram, LinearProgram]:
@@ -39,18 +51,23 @@ def get_min_max_lps(lp: LinearProgram, objective: torch.Tensor) -> tuple[LinearP
     lp_max = dataclasses.replace(lp, objective=objective, maximize=True)
     return lp_min, lp_max
 
-@overload
-def solve(lp: LinearProgram, solver: str = SOLVER_DEFAULT, verbose: bool = False) -> OptimizationResult: ...
 
 @overload
-def solve(lp: LinearProgram, solver: str = SOLVER_DEFAULT, verbose: bool = False, *, multiple_objectives: torch.Tensor) -> MultipleResults: ...
+def solve(lp: LinearProgram, verbose: bool = False) -> OptimizationResult: ...
 
-def solve(lp: LinearProgram, solver: str = SOLVER_DEFAULT, verbose: bool = False, multiple_objectives: torch.Tensor | None = None) -> OptimizationResult | MultipleResults:
-    if solver.lower() == 'gurobi':
+
+@overload
+def solve(lp: LinearProgram, verbose: bool = False, *, multiple_objectives: torch.Tensor) -> MultipleResults: ...
+
+
+def solve(lp: LinearProgram, verbose: bool = False, multiple_objectives: torch.Tensor | None = None) -> OptimizationResult | MultipleResults:
+    solver = _active_solver.get()  # in lowercase
+
+    if solver == 'gurobi':
         return solve_gurobi(lp, verbose, multiple_objectives=multiple_objectives)
 
     def solve_single(lp: LinearProgram) -> OptimizationResult:
-        match solver.lower():
+        match solver:
             case 'highs': return solve_scipy(lp, verbose)
             case 'cuopt': return solve_cuopt(lp, verbose)
         return solve_ortools(lp, solver, verbose)

@@ -20,9 +20,9 @@ def metrics_callback(ctx, param, value):
 @click.option('--train', is_flag=True)
 @click.option('-m', '--metrics', type=click.Choice(appmax.experiment.Metrics, case_sensitive=False), multiple=True, default=appmax.experiment.Metrics.MAXIMUM, callback=metrics_callback)
 @click.option('-b', '--bits', default=8)
-@click.option('-s', '--solver', default=appmax.experiment.SOLVER_DEFAULT)
-@click.option('-n', '--samples', default=-1)
-def main(dataset, run_id, metrics, train, bits, solver, samples):
+@click.option('-s', '--solver', default='')
+@click.option('-n', '--num_samples', default=-1)
+def main(dataset, run_id, metrics, train, bits, solver, num_samples):
     """
     AppMax \n
     input: evaluation network (original net. & approximated net. combined), data samples \n
@@ -70,9 +70,9 @@ def main(dataset, run_id, metrics, train, bits, solver, samples):
         model.save(MODEL_FILE)
     else:
         model.load(MODEL_FILE).eval()
-        # model_approx = MODEL_CLASS()
-        # model_approx.load(MODEL_FILE).eval()
-        # model_approx.round(bits=bits)
+        model_approx = MODEL_CLASS()
+        model_approx.load(MODEL_FILE).eval()
+        model_approx.round(bits=bits)
 
         loader_dev = torch.utils.data.DataLoader(data_split.dev, batch_size=64)
         print('MSE', mse := model.evaluate(loader_dev)[1])
@@ -82,12 +82,12 @@ def main(dataset, run_id, metrics, train, bits, solver, samples):
         x, y = data_split.dev[20]
         print('prediction', pred := model(x).item(), 'true', true := y.item(), 'difference', abs(pred-true))
 
-        return
-        eval_net = appmax.evaluation.EvaluationNet(
-            model, model_approx, data_split.metadata.bounds, seq_name=seq_name).eval()
+        # return
+        eval_net = appmax.evaluation.EvaluationNet(model, model_approx, data_split.metadata, seq_name=seq_name).eval()
 
         input_sample = data_split.test[0][0]
-        result = appmax.experiment.single(eval_net, input_sample, metrics, solver, debug=True)
+        with appmax.experiment.solver_config(solver):
+            result = appmax.experiment.single(eval_net, input_sample, metrics, debug=True)
         errors = [result['error_sample'], result['error_nearby'], result['polytope_width']]
         print('errors', *errors)
         print('scaled', *[x*data_split.metadata.error_scaling if x is not None else '' for x in errors])
@@ -98,9 +98,10 @@ def main(dataset, run_id, metrics, train, bits, solver, samples):
         # max, avg = appmax.evaluation.compute_error_aggregate(model, model_approx, loader_test)
         # print(f"{max=}, {avg=}")
 
-        # with joblib.parallel_config(backend='threading', n_jobs=1):
-        #     appmax.experiment.run(f'experiments/{dataset}', run_id, eval_net,
-        #                           data_split.test, metrics, first_k=samples)
+        samples = appmax.experiment.get_samples(data_split.test, num_samples)
+
+        with joblib.parallel_config(backend='threading', n_jobs=1), appmax.experiment.solver_config(solver):
+            appmax.experiment.run(f'experiments/{dataset}', run_id, eval_net, samples, metrics)
 
 
 if __name__ == '__main__':

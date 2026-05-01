@@ -24,12 +24,9 @@ class PolytopeResult:
     integral: float | None = None  # mean width of the extended polytope
 
 
-def analyze_linear_region(eval_net: appmax.evaluation.EvaluationNet, sample: torch.Tensor, solver: str, metrics: Metrics = Metrics.MAXIMUM, debug: bool = False) -> PolytopeResult:
+def analyze_linear_region(eval_net: appmax.evaluation.EvaluationNet, sample: torch.Tensor, metrics: Metrics = Metrics.MAXIMUM, debug: bool = False) -> PolytopeResult:
     """'sample' needs to be a single sample (not a batch)"""
-    constraints = appmax.neurons.Constraints()
-    message = appmax.neurons.Message(sample)
-    message = appmax.neurons.collect(eval_net, message, constraints)
-    lp = prepare_lp(message, constraints, eval_net.bounds)
+    lp = lp_from_eval_net(eval_net, sample)
 
     if debug:
         check_feasibility(sample, lp)
@@ -37,20 +34,29 @@ def analyze_linear_region(eval_net: appmax.evaluation.EvaluationNet, sample: tor
     result = PolytopeResult()
 
     if Metrics.MAXIMUM in metrics:
-        result.x, result.fun = appmax.solving.solve(lp, solver, verbose=debug)
+        result.x, result.fun = appmax.solving.solve(lp, verbose=debug)
         result.x = result.x.reshape_as(sample)
 
     if Metrics.WIDTH in metrics:
-        result.width = polytope_widths(lp, solver).mean().item()
+        result.width = polytope_widths(lp).mean().item()
 
     if Metrics.INTEGRAL in metrics:
         extended_polytope = prepare_integral(lp)
-        result.integral = polytope_widths(extended_polytope, solver).mean().item()
+        result.integral = polytope_widths(extended_polytope).mean().item()
 
     return result
 
 
-def prepare_lp(message: appmax.neurons.Message, constraints: appmax.neurons.Constraints, bounds: Bounds) -> LinearProgram:
+def lp_from_eval_net(eval_net: appmax.evaluation.EvaluationNet, sample: torch.Tensor) -> LinearProgram:
+    """'sample' needs to be a single sample (not a batch)"""
+    constraints = appmax.neurons.Constraints()
+    message = appmax.neurons.Message(sample)
+    message = appmax.neurons.collect(eval_net, message, constraints)
+    assert eval_net.metadata.bounds is not None
+    return lp_from_collected(message, constraints, eval_net.metadata.bounds)
+
+
+def lp_from_collected(message: appmax.neurons.Message, constraints: appmax.neurons.Constraints, bounds: Bounds) -> LinearProgram:
     TOL = 0  # 1e-8
     A_ub = []
     b_ub = []
@@ -87,14 +93,14 @@ def prepare_integral(lp: LinearProgram) -> Polytope:
     return Polytope(bounds, A_ub, b_ub)
 
 
-def polytope_widths(polytope: Polytope, solver: str, num_directions: int = 100, cummulative_avg: bool = False) -> torch.Tensor:
+def polytope_widths(polytope: Polytope, num_directions: int = 100, cummulative_avg: bool = False) -> torch.Tensor:
     """returns widths of the polytope computed from many random directions (or the cummulative average in each step)"""
     # variables == dimensions
     num_variables = polytope.A_ub.shape[1]
     directions = torch.randn(num_directions, num_variables)
     directions /= torch.linalg.vector_norm(directions, dim=1, keepdim=True)
     lp = LinearProgram(polytope.bounds, polytope.A_ub, polytope.b_ub, objective=torch.empty(0))
-    results = appmax.solving.solve(lp, solver, multiple_objectives=directions)
+    results = appmax.solving.solve(lp, multiple_objectives=directions)
     widths = torch.tensor([(res_max.fun - res_min.fun) for res_min, res_max in results])
     return widths if not cummulative_avg else widths.cumsum(dim=0) / torch.arange(1, num_directions+1)
 

@@ -2,7 +2,6 @@ import torch
 import scipy
 
 import appmax.optimization
-from appmax.solving import SOLVER_DEFAULT
 from appmax.trainable import Bounds
 
 ABS_TOL = 0.05
@@ -17,7 +16,7 @@ def vertices_to_H(vertices):
 
 
 def mean_width(polytope):
-    return appmax.optimization.polytope_widths(polytope, SOLVER_DEFAULT).mean().item()
+    return appmax.optimization.polytope_widths(polytope).mean().item()
 
 
 def test_cube():

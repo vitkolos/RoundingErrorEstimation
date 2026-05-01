@@ -5,20 +5,19 @@ import torch.nn as nn
 import appmax.neurons
 import appmax.optimization
 import appmax.solving
-from appmax.solving import SOLVER_DEFAULT
 import appmax.trainable
 from appmax.trainable import Bounds
 import tests.test_neurons
 
 
-def optimize_testing_procedure(net: nn.Module, sample: torch.Tensor, bounds: appmax.trainable.Bounds, mixing: float = 0.0, solver: str = SOLVER_DEFAULT):
+def optimize_testing_procedure(net: nn.Module, sample: torch.Tensor, bounds: appmax.trainable.Bounds, mixing: float = 0.0):
     net_collectable = net.layers if isinstance(net, appmax.trainable.TrainableModel) else net
     constraints = appmax.neurons.Constraints()
     constraints.neuron_states = []
     message = appmax.neurons.Message(sample)
     message = appmax.neurons.collect(net_collectable, message, constraints)
-    lp = appmax.optimization.prepare_lp(message, constraints, bounds)
-    sample_found, err_found = appmax.solving.solve(lp, solver)
+    lp = appmax.optimization.lp_from_collected(message, constraints, bounds)
+    sample_found, err_found = appmax.solving.solve(lp)
     sample_found = sample_found.reshape_as(sample)
     sample_comb = (1-mixing)*sample_found + mixing*sample
 
@@ -36,7 +35,7 @@ def optimize_testing_procedure(net: nn.Module, sample: torch.Tensor, bounds: app
     constraints_point.neuron_states = []
     message_point = appmax.neurons.Message(sample_comb)
     message_point = appmax.neurons.collect(net_collectable, message_point, constraints_point)
-    lp_point = appmax.optimization.prepare_lp(message_point, constraints_point, bounds)
+    lp_point = appmax.optimization.lp_from_collected(message_point, constraints_point, bounds)
 
     for t1, t2 in zip(constraints.neuron_states, constraints_point.neuron_states):
         torch.testing.assert_close(t1, t2, msg='States of neurons differ')
