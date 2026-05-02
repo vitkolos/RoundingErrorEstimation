@@ -4,6 +4,7 @@ __pycache__
 *.pt
 *.egg-info
 build
+*.out
 
 datasets
 models
