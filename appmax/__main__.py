@@ -107,7 +107,7 @@ def main(dataset, run_id, metrics, train, bits, solver, num_samples):
         # with joblib.parallel_config(backend='threading', n_jobs=1), appmax.solving.solver_config(solver):
         #     appmax.experiment.run(f'experiments/{dataset}', run_id, eval_net, samples, metrics)
 
-        # appmax.experiment.plot_widths(f'experiments/{dataset}/widths', eval_net, samples_dev, num_directions=300)
+        appmax.experiment.plot_widths(f'experiments/{dataset}/widths', eval_net, samples_dev, num_directions=300)
 
 
 if __name__ == '__main__':

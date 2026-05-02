@@ -120,6 +120,34 @@ def test_fc_neurons_random():
     torch.testing.assert_close(output, message.sample)
 
 
+class DummyNetBatchNorm1d(appmax.trainable.TrainableModel):
+    def __init__(self):
+        super().__init__(
+            nn.Sequential(
+                bn := nn.BatchNorm1d(16),
+                nn.ReLU(),
+                nn.Linear(16, 1)
+            )
+        )
+
+        with torch.no_grad():
+            bn.weight.normal_(1, 0.5)
+            bn.bias.normal_(0, 0.5)
+            bn.running_mean.normal_(0, 1)
+            bn.running_var.uniform_(0, 1)  # we need a positive variance
+
+
+def test_batch_norm1d_neurons_random():
+    net = DummyNetBatchNorm1d().eval()
+    sample = torch.testing.make_tensor(16, dtype=torch.float32, device='cpu', low=-1.0, high=2.0)
+    constraints = appmax.neurons.Constraints()
+    message = appmax.neurons.Message(sample)
+    message = appmax.neurons.collect(net.layers, message, constraints)
+    output = sample @ message.s_weight + message.s_bias
+    torch.testing.assert_close(output, net(sample.unsqueeze(0)))
+    torch.testing.assert_close(output, message.sample)
+
+
 class DummyNetConvPure(appmax.trainable.TrainableModel):
     def __init__(self):
         """relies on random initialization of parameters"""

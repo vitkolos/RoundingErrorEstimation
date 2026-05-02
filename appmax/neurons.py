@@ -120,7 +120,7 @@ def collect_linear(linear: nn.Linear, message: Message, constraints: Constraints
 def collect_batch_norm1d(batch_norm1d: nn.BatchNorm1d, message: Message, constraints: Constraints) -> Message:
     if batch_norm1d.training:
         raise RuntimeError('BatchNorm1d layer is in training mode')
-    elif not batch_norm1d.track_running_stats:
+    elif not batch_norm1d.track_running_stats or batch_norm1d.running_mean is None:
         raise NotImplementedError('collect_batch_norm1d does not support track_running_stats=False')
 
     message.sample = batch_norm1d(message.sample)
