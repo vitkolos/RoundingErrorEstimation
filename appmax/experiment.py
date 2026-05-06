@@ -135,22 +135,38 @@ def single(
     }
 
 
-def plot_widths(experiment_path: Path | str, eval_net: appmax.evaluation.EvaluationNet, samples: list[torch.Tensor], num_directions: int):
+def track_widths(experiment_path: Path | str, eval_net: appmax.evaluation.EvaluationNet, samples: list[torch.Tensor], num_directions: int):
     experiment_path = Path(experiment_path)
     experiment_path.mkdir(parents=True, exist_ok=True)
+    data = []
 
-    def plot_chart(name, ys):
-        plt.plot(torch.arange(1, num_directions+1), ys)
-        line = {'c': 'black', 'ls': 'dotted'}
-        plt.axvline(100, **line)
-        plt.axvline(200, **line)
-        plt.savefig(experiment_path / f'{name}_{i+1:02d}.png')
-        plt.close()
+    def extend_data(i: int, type_: str, widths: torch.Tensor):
+        data.extend([{'sample': i, 'type': type_, 'directions': d+1, 'width': w.item()} for d, w in enumerate(widths)])
 
     for i, sample in enumerate(tqdm.tqdm(samples, leave=False)):
         lp = appmax.optimization.lp_from_eval_net(eval_net, sample)
-        polytope_width = appmax.optimization.polytope_widths(lp, num_directions, cummulative_avg=True)
-        plot_chart('polytope', polytope_width)
+        polytope_widths = appmax.optimization.polytope_widths(lp, num_directions, cummulative_avg=True)
+        extend_data(i, 'polytope', polytope_widths)
         extended_polytope = appmax.optimization.prepare_integral(lp)
-        integral_width = appmax.optimization.polytope_widths(extended_polytope, num_directions, cummulative_avg=True)
-        plot_chart('integral', integral_width)
+        integral_widths = appmax.optimization.polytope_widths(extended_polytope, num_directions, cummulative_avg=True)
+        extend_data(i, 'integral', integral_widths)
+
+    pd.DataFrame(data).to_csv(experiment_path / 'data.csv')
+
+
+def plot_tracked_widths(experiment_path: Path | str):
+    experiment_path = Path(experiment_path)
+    data = pd.read_csv(experiment_path / 'data.csv', index_col=0)
+    grouped = data.groupby(['sample', 'type'])
+
+    def plot_chart(sample, name, xs, ys):
+        plt.plot(xs, ys)
+        line = {'c': 'black', 'ls': 'dotted'}
+        plt.axvline(100, **line)
+        plt.axvline(200, **line)
+        plt.savefig(experiment_path / f'{name}_{sample+1:02d}.png')
+        plt.close()
+
+    for group_name in grouped.groups.keys():
+        group_data = grouped.get_group(group_name)
+        plot_chart(*group_name, group_data['directions'], group_data['width'])
