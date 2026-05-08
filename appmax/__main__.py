@@ -24,7 +24,8 @@ def metrics_callback(ctx, param, value):
 @click.option('-b', '--bits', default=8)
 @click.option('-s', '--solver', default='')
 @click.option('-n', '--num_samples', default=-1)
-def main(dataset, run_id, metrics, train, bits, solver, num_samples):
+@click.option('-j', '--jobs', default=1)
+def main(dataset, run_id, metrics, train, bits, solver, num_samples, jobs):
     """
     AppMax \n
     input: evaluation network (original net. & approximated net. combined), data samples \n
@@ -77,38 +78,14 @@ def main(dataset, run_id, metrics, train, bits, solver, num_samples):
         model_approx.load(MODEL_FILE).eval()
         model_approx.round(bits=bits)
 
-        loader_dev = torch.utils.data.DataLoader(data_split.dev, batch_size=64)
-        print('MSE', mse := model.evaluate(loader_dev)[1])
-        print('RMSE', rmse := mse ** 0.5)
-        print('RMSE scaled', rmse * data_split.metadata.error_scaling)
-
-        x, y = data_split.dev[20]
-        print('prediction', pred := model(x.unsqueeze(0)).item(), 'true', true := y.item(), 'difference', abs(pred-true))
-
-        # return
         eval_net = appmax.evaluation.EvaluationNet(model, model_approx, data_split.metadata, seq_name=seq_name).eval()
-
-        input_sample = data_split.test[0][0]
-        with appmax.solving.solver_config(solver):
-            result = appmax.experiment.single(eval_net, input_sample, metrics, debug=True)
-        errors = [result['error_sample'], result['error_nearby'], result['polytope_width']]
-        print('errors', *errors)
-        print('scaled', *[x*data_split.metadata.error_scaling if x is not None else '' for x in errors])
-        print('california reference\nerrors 0.6520774364471436 0.7007212460728052')
-        # print('mnist-conv reference\nerrors 0.5852416753768921 0.6485908165661114')
-
-        # loader_test = torch.utils.data.DataLoader(data_split.test, batch_size=64)
-        # max, avg = appmax.evaluation.compute_error_aggregate(model, model_approx, loader_test)
-        # print(f"{max=}, {avg=}")
-
         samples = appmax.experiment.get_samples(data_split.test, num_samples)
-        samples_dev = appmax.experiment.get_samples(data_split.dev, num_samples)
 
-        # with joblib.parallel_config(backend='threading', n_jobs=1), appmax.solving.solver_config(solver):
-        #     appmax.experiment.run(f'experiments/{dataset}', run_id, eval_net, samples, metrics)
+        with joblib.parallel_config(backend='threading', n_jobs=jobs), appmax.solving.solver_config(solver):
+            appmax.experiment.run(f'experiments/{dataset}', run_id, eval_net, samples, metrics)
 
         # appmax.experiment.track_widths(f'experiments/{dataset}/widths', eval_net, samples_dev, num_directions=300)
-        appmax.experiment.plot_tracked_widths(f'experiments/{dataset}/widths')
+        # appmax.experiment.plot_tracked_widths({'california': f'experiments/california/widths', 'year': f'experiments/year/widths'})
 
 
 if __name__ == '__main__':
