@@ -49,7 +49,7 @@ def run(
     wrapped_step = joblib.delayed(wrapped_step)
     para = joblib.Parallel(return_as='generator_unordered')
     results_gen = para(wrapped_step(run_id, i, metrics, eval_net, sample) for i, sample in enumerate(samples))
-    progress_gen = logger.progress(results_gen, total=len(samples), main=True)
+    progress_gen = logger.progress(results_gen, total=len(samples), smoothing=0, main=True)
 
     # run & process output
     df = pd.DataFrame(progress_gen)
