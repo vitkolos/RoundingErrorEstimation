@@ -168,10 +168,13 @@ def plot_tracked_widths(experiments: dict[str, str]):
         data[e] = pd.read_csv(p / 'data.csv', index_col=0)
         grouped[e] = data[e].groupby(['sample', 'type'])
 
+    def s(data):
+        return data[25:]
+
     def plot_chart(category, name, identifiers):
         for experiment, key, label in identifiers:
             group_data = grouped[experiment].get_group(key)
-            plt.plot(group_data['directions'], group_data['width'], label=label)
+            plt.plot(s(group_data['directions']), s(group_data['width']), label=label)
 
         line = {'c': 'black', 'ls': 'dotted'}
         plt.axvline(50, **line)
@@ -194,7 +197,7 @@ def plot_tracked_widths(experiments: dict[str, str]):
 
         for ax, (experiment, key, label) in zip(axes, identifiers):
             group_data = grouped[experiment].get_group(key)
-            ax.plot(group_data['directions'], group_data['width'], label=label)
+            ax.plot(s(group_data['directions']), s(group_data['width']), label=label)
             line = {'c': 'black', 'ls': 'dotted'}
             ax.axvline(50, **line)
             ax.axvline(100, **line, lw=2)

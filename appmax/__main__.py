@@ -65,11 +65,11 @@ def main(dataset, run_id, metrics, train, bits, solver, num_samples, jobs):
         eval_net = appmax.evaluation.EvaluationNet(model, model_approx, data_split.metadata, seq_name=seq_name).eval()
         samples = appmax.experiment.get_samples(data_split.test, num_samples)
 
-        with joblib.parallel_config(backend='loky', n_jobs=jobs), appmax.solving.solver_config(solver):
-            appmax.experiment.run(f'experiments/{dataset}', run_id, eval_net, samples, metrics)
+        # with joblib.parallel_config(backend='loky', n_jobs=jobs), appmax.solving.solver_config(solver):
+        #     appmax.experiment.run(f'experiments/{dataset}', run_id, eval_net, samples, metrics)
 
         # appmax.experiment.track_widths(f'experiments/{dataset}/widths', eval_net, samples_dev, num_directions=300)
-        # appmax.experiment.plot_tracked_widths({'california': f'experiments/california/widths', 'year': f'experiments/year/widths'})
+        appmax.experiment.plot_tracked_widths({'california': f'experiments/california/widths', 'year': f'experiments/year/widths'})
 
 
 if __name__ == '__main__':
