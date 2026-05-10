@@ -1,15 +1,17 @@
 from pathlib import Path
+import typing
+import time
 
 import torch
 import joblib
 import pandas as pd
 import numpy as np
-import tqdm
 import matplotlib.pyplot as plt
 
 import appmax.evaluation
 import appmax.optimization
 import appmax.trainable
+import appmax.logger as logger
 
 
 def get_samples(dataset: appmax.trainable.Dataset, first_k: int | None = None) -> list[torch.Tensor]:
@@ -47,13 +49,13 @@ def run(
     wrapped_step = joblib.delayed(wrapped_step)
     para = joblib.Parallel(return_as='generator_unordered')
     results_gen = para(wrapped_step(run_id, i, metrics, eval_net, sample) for i, sample in enumerate(samples))
-    progress_gen = tqdm.tqdm(results_gen, leave=False, total=len(samples))
+    progress_gen = logger.progress(results_gen, total=len(samples), main=True)
 
     # run & process output
     df = pd.DataFrame(progress_gen)
     df = df.set_index('sample_index').sort_index()
     error_cols = ['error_sample', 'error_nearby']
-    df_results = df[error_cols + ['polytope_width', 'integral']]
+    df_results = df[error_cols + ['polytope_width', 'integral', 'time']]
     df_results.to_csv(experiment_path / f'{run_id}_results.csv')
     df_described = describe(df_results)
     df_described.to_csv(experiment_path / f'{run_id}_described.csv')
@@ -107,8 +109,10 @@ def step(
 ) -> dict:
     """function for parallel execution
     (run_id & sample_index & metrics are used for caching, eval_net & input_sample are ignored)"""
+    start_time = time.time()
     result = single(eval_net, input_sample, metrics)
     result['sample_index'] = sample_index
+    result['time'] = time.time() - start_time
     return result
 
 
@@ -143,7 +147,7 @@ def track_widths(experiment_path: Path | str, eval_net: appmax.evaluation.Evalua
     def extend_data(i: int, type_: str, widths: torch.Tensor):
         data.extend([{'sample': i, 'type': type_, 'directions': d+1, 'width': w.item()} for d, w in enumerate(widths)])
 
-    for i, sample in enumerate(tqdm.tqdm(samples, leave=False)):
+    for i, sample in enumerate(logger.progress(samples, main=True)):
         lp = appmax.optimization.lp_from_eval_net(eval_net, sample)
         polytope_widths = appmax.optimization.polytope_widths(lp, num_directions, cummulative_avg=True)
         extend_data(i, 'polytope', polytope_widths)
@@ -207,7 +211,7 @@ def plot_tracked_widths(experiments: dict[str, str]):
     # one chart per polytope
     for experiment in experiments.keys():
         for key in grouped[experiment].groups.keys():
-            sample, type_ = key
+            sample, type_ = typing.cast(tuple[int, str], key)
             plot_chart('single', f'{type_}_{sample+1:02d}', [(experiment, key, None)])
 
     # polytope and integral in the same chart

@@ -1,3 +1,4 @@
+import sys
 from dataclasses import dataclass
 from typing import Any
 
@@ -46,7 +47,7 @@ class Metadata:
         data = data_full[:, self.sl_data]
         valid_cells = (data >= self.bounds.lb) & (data <= self.bounds.ub)
         valid_rows = valid_cells.all(axis=1)
-        print(f'removed {(~valid_rows).sum()} outliers')
+        print(f'removed {(~valid_rows).sum()} outliers', file=sys.stderr)
         return data_full[valid_rows]
 
 

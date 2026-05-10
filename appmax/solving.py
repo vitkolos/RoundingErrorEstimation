@@ -4,10 +4,10 @@ from contextvars import ContextVar
 from contextlib import contextmanager
 
 import torch
-import tqdm
 import scipy.optimize
 import gurobipy
 
+import appmax.logger as logger
 from appmax.trainable import Bounds
 
 
@@ -73,7 +73,7 @@ def solve(lp: LinearProgram, verbose: bool = False, multiple_objectives: torch.T
         return solve_ortools(lp, solver, verbose)
 
     if multiple_objectives is not None:
-        lps = (get_min_max_lps(lp, objective) for objective in tqdm.tqdm(multiple_objectives, leave=False))
+        lps = (get_min_max_lps(lp, objective) for objective in logger.progress(multiple_objectives))
         return [(solve_single(lp_min), solve_single(lp_max)) for lp_min, lp_max in lps]
 
     return solve_single(lp)
@@ -210,6 +210,6 @@ def solve_gurobi(lp: LinearProgram, verbose: bool, multiple_objectives: torch.Te
                     raise RuntimeError(f'optimization ended with status {model.Status}')
 
             if multiple_objectives is not None:
-                return [(optimize(o, maximize=False), optimize(o, maximize=True)) for o in tqdm.tqdm(multiple_objectives, leave=False)]
+                return [(optimize(o, maximize=False), optimize(o, maximize=True)) for o in logger.progress(multiple_objectives)]
             else:
                 return optimize(lp.objective, lp.maximize)

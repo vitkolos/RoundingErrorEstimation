@@ -40,22 +40,6 @@ def main(dataset, run_id, metrics, train, bits, solver, num_samples, jobs):
             MODEL_FILE = "models/california_housing_mlp.pt"
             MODEL_CLASS = california_housing.HousingMLP
             data_split = california_housing.CaliforniaHousingSplit()
-        case 'energy':
-            MODEL_FILE = "models/energy_efficiency_simple_net.pt"
-            MODEL_CLASS = energy_efficiency.SimpleNet
-            data_split = energy_efficiency.EnergyEfficiencySplit()
-        case 'mnist':
-            # MODEL_FILE = "models/mnist_new_dense.pt"
-            # MODEL_CLASS = mnist.SmallDenseNet
-            MODEL_FILE = "models/mnist_dense_net.pt"
-            MODEL_CLASS = mnist.SmallDenseNetLegacy
-            data_split = mnist.MnistSplit()
-            seq_name = 'network'
-        case 'mnist-conv':
-            MODEL_FILE = "models/mnist_conv_net.pt"
-            MODEL_CLASS = mnist.SmallConvNetLegacy
-            data_split = mnist.MnistSplit()
-            seq_name = 'network'
         case 'year':
             MODEL_FILE = "models/year_prediction_net.pt"
             MODEL_CLASS = year_prediction.YearNet
