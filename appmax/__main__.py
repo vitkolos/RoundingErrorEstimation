@@ -7,6 +7,7 @@ import appmax.evaluation
 import appmax.experiment
 import appmax.solving
 import appmax.optimization
+import appmax.visualization
 
 
 def metrics_callback(ctx, param, value):
@@ -69,7 +70,7 @@ def main(dataset, run_id, metrics, train, bits, solver, num_samples, jobs):
         #     appmax.experiment.run(f'experiments/{dataset}', run_id, eval_net, samples, metrics)
 
         # appmax.experiment.track_widths(f'experiments/{dataset}/widths', eval_net, samples_dev, num_directions=300)
-        appmax.experiment.plot_tracked_widths({'california': f'experiments/california/widths', 'year': f'experiments/year/widths'})
+        appmax.visualization.plot_tracked_widths({'california': f'experiments/california/widths', 'year': f'experiments/year/widths'})
 
 
 if __name__ == '__main__':
