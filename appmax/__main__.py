@@ -70,7 +70,9 @@ def main(dataset, run_id, metrics, train, bits, solver, num_samples, jobs):
         #     appmax.experiment.run(f'experiments/{dataset}', run_id, eval_net, samples, metrics)
 
         # appmax.experiment.track_widths(f'experiments/{dataset}/widths', eval_net, samples_dev, num_directions=300)
-        appmax.visualization.plot_tracked_widths({'california': f'experiments/california/widths', 'year': f'experiments/year/widths'})
+        # appmax.visualization.plot_tracked_widths({'california': f'experiments/california/widths', 'year': f'experiments/year/widths'})
+
+        appmax.visualization.plot_results(f'experiments/{dataset}', run_id)
 
 
 if __name__ == '__main__':

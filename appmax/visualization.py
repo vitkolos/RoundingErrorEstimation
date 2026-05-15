@@ -5,6 +5,19 @@ import pandas as pd
 import matplotlib.pyplot as plt
 
 
+def plot_results(experiment_path: Path | str, run_id: str):
+    experiment_path = Path(experiment_path)
+    df_results = pd.read_csv(experiment_path / f'{run_id}_results.csv')
+    target_dir = experiment_path / f'{run_id}_plots'
+    target_dir.mkdir(parents=True, exist_ok=True)
+
+    for col in ['error_sample', 'error_nearby', 'polytope_width', 'integral']:
+        plt.hist(df_results[col], 50)
+        plt.title(col)
+        plt.savefig(target_dir / f'{col}_hist.png')
+        plt.close()
+
+
 def plot_tracked_widths(experiments: dict[str, str]):
     experiment_paths = {e: Path(p) for e, p in experiments.items()}
     data, grouped = {}, {}
