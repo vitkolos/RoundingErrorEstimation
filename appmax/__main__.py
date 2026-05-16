@@ -72,7 +72,17 @@ def main(dataset, run_id, metrics, train, bits, solver, num_samples, jobs):
         # appmax.experiment.track_widths(f'experiments/{dataset}/widths', eval_net, samples_dev, num_directions=300)
         # appmax.visualization.plot_tracked_widths({'california': f'experiments/california/widths', 'year': f'experiments/year/widths'})
 
-        appmax.visualization.plot_results(f'experiments/{dataset}', run_id)
+        # appmax.visualization.plot_results(f'experiments/{dataset}', run_id)
+
+        with open('experiments/comparison.html', 'w') as f:
+            f.write(
+                appmax.visualization.multiple_comparisons([
+                    ('experiments/california', ['run', 'sym8']),
+                    ('experiments/california', ['second', 'sym4']),
+                    ('experiments/year', ['run', 'sym8']),
+                    ('experiments/year', ['second', 'sym4']),
+                ], {'run': 'asym8', 'second': 'asym4'})
+            )
 
 
 if __name__ == '__main__':

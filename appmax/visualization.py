@@ -1,5 +1,6 @@
 from pathlib import Path
 import typing
+import re
 
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -16,6 +17,52 @@ def plot_results(experiment_path: Path | str, run_id: str):
         plt.title(col)
         plt.savefig(target_dir / f'{col}_hist.png')
         plt.close()
+
+
+def compare_results(experiment_path: Path | str, run_ids: list[str], aliases: dict[str, str]) -> str:
+    experiment_path = Path(experiment_path)
+    dfs = {run_id: pd.read_csv(experiment_path / f'{run_id}_described_unscaled.csv', index_col=0) for run_id in run_ids}
+
+    def extract_metrics(name: str, df: pd.DataFrame):
+        return {
+            'run': f'{experiment_path.name}: {aliases[name] if name in aliases else name}',
+            'sample_max': df.loc['max', 'error_sample'],
+            'sample_mean': df.loc['mean', 'error_sample'],
+            'nearby_max': df.loc['max', 'error_nearby'],
+            'nearby_mean': df.loc['mean', 'error_nearby'],
+            'nearby_weighted': df.loc['weighted', 'error_nearby'],
+            'integral_divided': df.loc['weighted', 'integral'],
+        }
+
+    df = pd.DataFrame(extract_metrics(*item) for item in dfs.items())
+    df = df.set_index('run')
+    df.index.name = None
+    styled_df = df.style.highlight_min(color='lightgreen', axis=0)
+    return styled_df.to_html()
+
+
+def multiple_comparisons(items: list[tuple[Path | str, list[str]]], aliases: dict[str, str]):
+    html = ''.join(compare_results(*item, aliases) for item in items)
+    html = re.sub(r'</?table.*?>', '', html)
+    katex_aliases = {
+        'sample_max': r'E_T',
+        'sample_mean': r'\overline{E_T}',
+        'nearby_max': r'E_{\Xi_T}',
+        'nearby_mean': r'\overline{E_{\Xi_T}}',
+        'nearby_weighted': r'\overline E^{\tilde d}_{\Xi_T}',
+        'integral_divided': r'\overline E^{\tilde d}_{\Xi_T^E}',
+    }
+
+    for column, alias in katex_aliases.items():
+        html = html.replace(column, f'\\( {alias} \\) {column.replace('_', ' ')}')
+
+    style = 'body{font-family:sans-serif} table{border-collapse: collapse;} td,th{padding:0.5rem 1rem}'
+    katex = """
+        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.47/dist/katex.min.css" integrity="sha384-nH0MfJ44wi1dd7w6jinlyBgljjS8EJAh2JBoRad8a3VDw2K69vfaaqm4WnR+gXtA" crossorigin="anonymous">
+        <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.47/dist/katex.min.js" integrity="sha384-CwjPRVHTvLiMBFjEoij+QZViMV5rhTOIp7CJzl24JEqpRDA1sJFHVXXLURktbYYp" crossorigin="anonymous"></script>
+        <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.47/dist/contrib/auto-render.min.js" integrity="sha384-bjyGPfbij8/NDKJhSGZNP/khQVgtHUE5exjm4Ydllo42FwIgYsdLO2lXGmRBf5Mz" crossorigin="anonymous" onload="renderMathInElement(document.body);"></script>
+    """
+    return f'<!doctype html><html><head>{katex}<style>{style}</style></head><body><table>{html}</table></body></html>'
 
 
 def plot_tracked_widths(experiments: dict[str, str]):
