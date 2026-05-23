@@ -191,6 +191,7 @@ def solve_gurobi(lp: LinearProgram, verbose: bool, multiple_objectives: torch.Te
 
     with gurobipy.Env(empty=True) as env:
         env.setParam('LogToConsole', int(verbose))
+        env.setParam('Threads', 1)
         env.start()
 
         with gurobipy.Model(env=env) as model:
