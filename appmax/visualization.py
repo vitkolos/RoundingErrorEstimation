@@ -5,6 +5,8 @@ import re
 import pandas as pd
 import matplotlib.pyplot as plt
 
+import appmax.experiment
+
 
 def plot_results(experiment_path: Path | str, run_id: str):
     experiment_path = Path(experiment_path)
@@ -30,8 +32,8 @@ def compare_results(experiment_path: Path | str, run_ids: list[str], aliases: di
             'sample_mean': df.loc['mean', 'error_sample'],
             'nearby_max': df.loc['max', 'error_nearby'],
             'nearby_mean': df.loc['mean', 'error_nearby'],
-            'nearby_weighted': df.loc['weighted', 'error_nearby'],
-            'integral_divided': df.loc['weighted', 'integral'],
+            'nearby_weighted_sum': df.loc['weighted', 'error_nearby'],
+            'integral_divided_sum': df.loc['weighted', 'integral'],
         }
 
     df = pd.DataFrame(extract_metrics(*item) for item in dfs.items())
@@ -41,28 +43,69 @@ def compare_results(experiment_path: Path | str, run_ids: list[str], aliases: di
     return styled_df.to_html()
 
 
-def multiple_comparisons(items: list[tuple[Path | str, list[str]]], aliases: dict[str, str]):
-    html = ''.join(compare_results(*item, aliases) for item in items)
-    html = re.sub(r'</?table.*?>', '', html)
+def list_points(experiment_path: Path | str, run_id: str, error_scaling: float, indices: list[int], aliases: dict[str, str]) -> str:
+    experiment_path = Path(experiment_path)
+    df_results = pd.read_csv(experiment_path / f'{run_id}_results.csv')
+    df_results.loc[:, appmax.experiment.UNSCALED_COLS] *= error_scaling
+    weights_sum = df_results.get('polytope_width').sum()
+
+    def row(item: pd.Series):
+        return {
+            'index': int(item['sample_index']),
+            'error_sample': item['error_sample'],
+            'error_nearby': item['error_nearby'],
+            'polytope_width': item['polytope_width'],
+            'weight': item['polytope_width'] / weights_sum,
+            'nearby_weighted': (item['polytope_width'] / weights_sum) * item['error_nearby'],
+            'integral_width': item['integral'],
+            'integral_divided': item['integral'] / weights_sum,
+        }
+
+    df = pd.DataFrame(row(df_results.loc[index]) for index in indices)
+    df = df.set_index('index')
+    df.index.name = None
+    hl_args = {'axis': 0, 'props': 'font-weight:bold'}
+    styled_df = df.style.highlight_min(**hl_args).highlight_max(**hl_args)
+
+    run_name = aliases[run_id] if run_id in aliases else run_id
+    s_tex = r'\sum_{x\in T} \tilde d_n(\Xi_x)'
+    unscaled_text = '' if error_scaling == 1.0 else f'(unscaled = multiplied by {error_scaling:.6f} to get the original units)'
+    header = f'<p><b>{experiment_path.name}: {run_name}</b> {unscaled_text}</p><p>\\( S = {s_tex} = \\) {weights_sum:.6f}</p>'
+    return header + styled_df.to_html()
+
+
+def tables_to_html(tables, into_one=True):
+    html = ''.join(tables)
+
+    if into_one:
+        html = '<table>' + re.sub(r'</?table.*?>', '', html) + '</table>'
+
     katex_aliases = {
         'sample_max': r'E_T',
         'sample_mean': r'\overline{E_T}',
         'nearby_max': r'E_{\Xi_T}',
         'nearby_mean': r'\overline{E_{\Xi_T}}',
-        'nearby_weighted': r'\overline E^{\tilde d}_{\Xi_T}',
-        'integral_divided': r'\overline E^{\tilde d}_{\Xi_T^E}',
+        'nearby_weighted_sum': r'\overline E^{\tilde d}_{\Xi_T}',
+        'integral_divided_sum': r'\overline E^{\tilde d}_{\Xi_T^E}',
+        'error_sample': r'E(x)',
+        'error_nearby': r'E_{\Xi_x}',
+        'polytope_width': r'\tilde d_n(\Xi_x)',
+        'weight': r'\frac{\tilde d_n(\Xi_x)}{S}',
+        'nearby_weighted': r'\frac{\tilde d_n(\Xi_x)}{S} E_{\Xi_x}',
+        'integral_width': r'\tilde d_{n+1}(\Xi_x^E)',
+        'integral_divided': r'\tilde d_{n+1}(\Xi_x^E)\over S',
     }
 
     for column, alias in katex_aliases.items():
-        html = html.replace(column, f'\\( {alias} \\) {column.replace('_', ' ')}')
+        html = html.replace(f'>{column}</th>', f'>\\( {alias} \\)<small>{column.replace('_', ' ')}</small></th>')
 
-    style = 'body{font-family:sans-serif} table{border-collapse: collapse;} td,th{padding:0.5rem 1rem}'
+    style = 'body{font-family:sans-serif} table{border-collapse: collapse;} td,th{padding:0.5rem 1rem;} th{text-align:right} th:not(:first-child){vertical-align:bottom; text-align:left} small{display:block; margin-top:0.5rem}'
     katex = """
         <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.47/dist/katex.min.css" integrity="sha384-nH0MfJ44wi1dd7w6jinlyBgljjS8EJAh2JBoRad8a3VDw2K69vfaaqm4WnR+gXtA" crossorigin="anonymous">
         <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.47/dist/katex.min.js" integrity="sha384-CwjPRVHTvLiMBFjEoij+QZViMV5rhTOIp7CJzl24JEqpRDA1sJFHVXXLURktbYYp" crossorigin="anonymous"></script>
         <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.47/dist/contrib/auto-render.min.js" integrity="sha384-bjyGPfbij8/NDKJhSGZNP/khQVgtHUE5exjm4Ydllo42FwIgYsdLO2lXGmRBf5Mz" crossorigin="anonymous" onload="renderMathInElement(document.body);"></script>
     """
-    return f'<!doctype html><html><head>{katex}<style>{style}</style></head><body><table>{html}</table></body></html>'
+    return f'<!doctype html><html><head>{katex}<style>{style}</style></head><body>{html}</body></html>'
 
 
 def plot_tracked_widths(experiments: dict[str, str]):

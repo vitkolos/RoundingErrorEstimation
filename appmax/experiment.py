@@ -11,6 +11,10 @@ import appmax.optimization
 import appmax.trainable
 import appmax.logger as logger
 
+ERROR_COLS = ['error_sample', 'error_nearby']
+RESULT_COLS = ERROR_COLS + ['polytope_width', 'integral', 'time']
+UNSCALED_COLS = ERROR_COLS + ['integral']
+
 
 def get_samples(dataset: appmax.trainable.Dataset, first_k: int | None = None) -> list[torch.Tensor]:
     total_length = len(dataset)  # type: ignore
@@ -52,15 +56,13 @@ def run(
         # run & process output
         df = pd.DataFrame(progress_gen)
     df = df.set_index('sample_index').sort_index()
-    error_cols = ['error_sample', 'error_nearby']
-    df_results = df[error_cols + ['polytope_width', 'integral', 'time']]
+    df_results = df[RESULT_COLS]
     df_results.to_csv(experiment_path / f'{run_id}_results.csv')
-    df_described = describe(df_results)
-    df_described.to_csv(experiment_path / f'{run_id}_described.csv')
+    describe(df_results).to_csv(experiment_path / f'{run_id}_described.csv')
 
     # unscale the errors and integrals
     df_results_unscaled = df_results.copy()
-    df_results_unscaled.loc[:, error_cols + ['integral']] *= eval_net.metadata.error_scaling
+    df_results_unscaled.loc[:, UNSCALED_COLS] *= eval_net.metadata.error_scaling
     describe(df_results_unscaled).to_csv(experiment_path / f'{run_id}_described_unscaled.csv')
 
     # save found points where error is maximum
