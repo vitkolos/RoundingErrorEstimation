@@ -2,7 +2,7 @@ import torch
 import joblib
 import click
 
-from appmax.applications import california_housing, mnist, energy_efficiency, year_prediction
+from appmax.applications import california_housing, year_prediction, utkface
 import appmax.evaluation
 import appmax.experiment
 import appmax.solving
@@ -45,6 +45,10 @@ def main(dataset, run_id, metrics, train, bits, solver, num_samples, jobs):
             MODEL_FILE = "models/year_prediction_net.pt"
             MODEL_CLASS = year_prediction.YearNet
             data_split = year_prediction.YearPredictionSplit()
+        case 'utkface':
+            MODEL_FILE = ""
+            MODEL_CLASS = ...
+            data_split = utkface.UTKFaceSplit()
         case _:
             raise NotImplementedError(f"'{dataset}' dataset is not available")
 
