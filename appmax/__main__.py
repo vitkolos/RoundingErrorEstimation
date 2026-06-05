@@ -46,8 +46,8 @@ def main(dataset, run_id, metrics, train, bits, solver, num_samples, jobs):
             MODEL_CLASS = year_prediction.YearNet
             data_split = year_prediction.YearPredictionSplit()
         case 'utkface':
-            MODEL_FILE = ""
-            MODEL_CLASS = ...
+            MODEL_FILE = "models/utkface_net.pt"
+            MODEL_CLASS = utkface.FaceConvNet
             data_split = utkface.UTKFaceSplit()
         case _:
             raise NotImplementedError(f"'{dataset}' dataset is not available")
