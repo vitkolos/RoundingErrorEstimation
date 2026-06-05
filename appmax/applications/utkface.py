@@ -116,7 +116,7 @@ class FaceConvNet(appmax.trainable.TrainableModel):
                 nn.Flatten(),
                 nn.Linear(128 * 12 * 12, 256),
                 nn.ReLU(),
-                nn.Dropout(0.4),
+                nn.Dropout(0.3),
 
                 nn.Linear(256, 64),
                 nn.ReLU(),
@@ -128,7 +128,7 @@ class FaceConvNet(appmax.trainable.TrainableModel):
             loss_fn=nn.MSELoss(),
             optimizer=torch.optim.AdamW(self.parameters(), lr=1e-4, weight_decay=1e-4),
             metric_fn=torchmetrics.MeanSquaredError(),
-            epochs=50,
+            epochs=70,
         )
 
         def init_weights(module):

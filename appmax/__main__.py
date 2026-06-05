@@ -70,6 +70,10 @@ def main(dataset, run_id, metrics, train, bits, solver, num_samples, jobs):
         eval_net = appmax.evaluation.EvaluationNet(model, model_approx, data_split.metadata, seq_name=seq_name).eval()
         samples = appmax.experiment.get_samples(data_split.test, num_samples)
 
+        loader_dev = torch.utils.data.DataLoader(data_split.dev, batch_size=model.batch_size)
+        loss_dev, metric_dev = model.evaluate(loader_dev)
+        print(loss_dev)
+
         # with joblib.parallel_config(backend='loky', n_jobs=jobs), appmax.solving.solver_config(solver):
         #     appmax.experiment.run(f'experiments/{dataset}', run_id, eval_net, samples, metrics)
 
@@ -80,30 +84,30 @@ def main(dataset, run_id, metrics, train, bits, solver, num_samples, jobs):
 
         aliases = {'run': 'asym8', 'second': 'asym4'}
 
-        with open('experiments/comparison.html', 'w') as f:
-            items = [
-                ('experiments/california', ['run', 'sym8']),
-                ('experiments/california', ['second', 'sym4']),
-                ('experiments/year', ['run', 'sym8']),
-                ('experiments/year', ['second', 'sym4']),
-            ]
-            tables = [appmax.visualization.compare_results(*item, aliases) for item in items]
-            f.write(appmax.visualization.tables_to_html(tables))
+        # with open('experiments/comparison.html', 'w') as f:
+        #     items = [
+        #         ('experiments/california', ['run', 'sym8']),
+        #         ('experiments/california', ['second', 'sym4']),
+        #         ('experiments/year', ['run', 'sym8']),
+        #         ('experiments/year', ['second', 'sym4']),
+        #     ]
+        #     tables = [appmax.visualization.compare_results(*item, aliases) for item in items]
+        #     f.write(appmax.visualization.tables_to_html(tables))
 
-        indices = sorted(torch.randperm(1000)[:20].tolist())
-        datasets = [
-            ('experiments/california', california_housing.CaliforniaHousingSplit().metadata.error_scaling),
-            ('experiments/year', year_prediction.YearPredictionSplit().metadata.error_scaling),
-        ]
-        runs = ('run', 'sym8', 'second', 'sym4')
+        # indices = sorted(torch.randperm(1000)[:20].tolist())
+        # datasets = [
+        #     ('experiments/california', california_housing.CaliforniaHousingSplit().metadata.error_scaling),
+        #     ('experiments/year', year_prediction.YearPredictionSplit().metadata.error_scaling),
+        # ]
+        # runs = ('run', 'sym8', 'second', 'sym4')
 
-        with open('experiments/points.html', 'w') as f:
-            tables = [appmax.visualization.list_points(d, r, 1.0, indices, aliases) for d, _ in datasets for r in runs]
-            f.write(appmax.visualization.tables_to_html(tables, into_one=False))
+        # with open('experiments/points.html', 'w') as f:
+        #     tables = [appmax.visualization.list_points(d, r, 1.0, indices, aliases) for d, _ in datasets for r in runs]
+        #     f.write(appmax.visualization.tables_to_html(tables, into_one=False))
 
-        with open('experiments/points_unscaled.html', 'w') as f:
-            tables = [appmax.visualization.list_points(d, r, s, indices, aliases) for d, s in datasets for r in runs]
-            f.write(appmax.visualization.tables_to_html(tables, into_one=False))
+        # with open('experiments/points_unscaled.html', 'w') as f:
+        #     tables = [appmax.visualization.list_points(d, r, s, indices, aliases) for d, s in datasets for r in runs]
+        #     f.write(appmax.visualization.tables_to_html(tables, into_one=False))
 
 
 if __name__ == '__main__':
