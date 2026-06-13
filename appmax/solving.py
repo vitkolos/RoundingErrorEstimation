@@ -63,8 +63,8 @@ def solve(lp: LinearProgram, verbose: bool = False, *, multiple_objectives: torc
 def solve(lp: LinearProgram, verbose: bool = False, multiple_objectives: torch.Tensor | None = None) -> OptimizationResult | MultipleResults:
     solver = _active_solver.get()  # in lowercase
 
-    if solver == 'gurobi':
-        return solve_gurobi(lp, verbose, multiple_objectives=multiple_objectives)
+    if solver == 'gurobi' or solver == 'gurobi-barrier':
+        return solve_gurobi(lp, verbose, force_barrier=(solver == 'gurobi-barrier'), multiple_objectives=multiple_objectives)
 
     def solve_single(lp: LinearProgram) -> OptimizationResult:
         match solver:
@@ -186,12 +186,16 @@ def solve_cuopt(lp: LinearProgram, verbose: bool) -> OptimizationResult:
     return OptimizationResult(found_x, found_maximum)
 
 
-def solve_gurobi(lp: LinearProgram, verbose: bool, multiple_objectives: torch.Tensor | None = None) -> OptimizationResult | MultipleResults:
+def solve_gurobi(lp: LinearProgram, verbose: bool, force_barrier: bool = False, multiple_objectives: torch.Tensor | None = None) -> OptimizationResult | MultipleResults:
     num_variables = lp.A_ub.shape[1]
 
     with gurobipy.Env(empty=True) as env:
         env.setParam('LogToConsole', int(verbose))
         env.setParam('Threads', 1)
+
+        if force_barrier:
+            env.setParam('Method', 2)  # barrier solver
+
         env.start()
 
         with gurobipy.Model(env=env) as model:

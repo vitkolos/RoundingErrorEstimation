@@ -70,12 +70,13 @@ def main(dataset, run_id, metrics, train, bits, solver, num_samples, jobs):
         eval_net = appmax.evaluation.EvaluationNet(model, model_approx, data_split.metadata, seq_name=seq_name).eval()
         samples = appmax.experiment.get_samples(data_split.test, num_samples)
 
-        # results = appmax.experiment.single(eval_net, samples[0], metrics, debug=True)
-        # print(results)
+        with appmax.solving.solver_config(solver):
+            results = appmax.experiment.single(eval_net, samples[1], metrics, debug=True)
+        print(results)
 
-        loader_dev = torch.utils.data.DataLoader(data_split.dev, batch_size=model.batch_size)
-        loss_dev, metric_dev = model.evaluate(loader_dev)
-        print(loss_dev)
+        # loader_dev = torch.utils.data.DataLoader(data_split.dev, batch_size=model.batch_size)
+        # loss_dev, metric_dev = model.evaluate(loader_dev)
+        # print(loss_dev)
 
         # with joblib.parallel_config(backend='loky', n_jobs=jobs), appmax.solving.solver_config(solver):
         #     appmax.experiment.run(f'experiments/{dataset}', run_id, eval_net, samples, metrics)

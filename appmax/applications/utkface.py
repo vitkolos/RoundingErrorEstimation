@@ -94,7 +94,7 @@ class UTKFaceSplit(appmax.trainable.DataSplit):
             data, target, test_size=1/8, random_state=42, stratify=buckets(target))
         data_train, data_dev, target_train, target_dev = sklearn.model_selection.train_test_split(
             data_train, target_train, test_size=1/7, random_state=43, stratify=buckets(target_train))
-        bounds = appmax.trainable.Bounds([(0.0, 1.0)] * (IMG_SIZE*IMG_SIZE*IMG_CHANNELS))
+        bounds = appmax.trainable.Bounds([(-1.0, 1.0)] * (IMG_SIZE*IMG_SIZE*IMG_CHANNELS))
         self.metadata = appmax.trainable.Metadata(bounds=bounds)
         self.train = UTKFaceDataset(data_train, target_train, self.metadata)
         self.dev = UTKFaceDataset(data_dev, target_dev, self.metadata)
