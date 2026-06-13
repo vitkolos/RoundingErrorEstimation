@@ -2,13 +2,13 @@ import sys
 from dataclasses import dataclass
 from typing import Any
 
-import tqdm
 import numpy as np
 import torch
 from torch import nn
 from torch.utils.data import Dataset
 import torchmetrics
 
+import appmax.logger
 import appmax.quantization
 
 
@@ -145,7 +145,7 @@ class TrainableModel(BaseModel):
         self.metric_fn = self.metric_fn.to(device)
         self.metric_fn.reset()
 
-        for X, y in tqdm.tqdm(loader, leave=False):
+        for X, y in appmax.logger.progress(loader):
             X, y = X.to(device), y.to(device)
             N = X.shape[0]
             pred = self(X)
@@ -163,6 +163,26 @@ class TrainableModel(BaseModel):
         loss = loss_sum / total_samples
         metric = self.metric_fn.compute().item()
         return loss, metric
+
+    def subset(self, dataset: Dataset) -> Dataset:
+        predictions = []
+        loader = torch.utils.data.DataLoader(dataset, batch_size=self.batch_size)
+
+        with torch.no_grad():
+            self.eval()
+            device = self.device
+
+            for X, y in appmax.logger.progress(loader):
+                X, y = X.to(device), y.to(device)
+                predictions.append(self(X))
+
+        predictions = torch.cat(predictions)
+        targets = dataset.target
+        accurate_enough = (targets - predictions).abs() < 1.0
+        accurate_count = accurate_enough.sum()
+        indices = torch.nonzero(accurate_enough, as_tuple=True)[0].tolist()
+        print(f'subset contains only {accurate_count} data points ({len(dataset)-accurate_count} removed, model was too inaccurate)')
+        return torch.utils.data.Subset(dataset, indices)
 
 
 def init_weights(module: nn.Module):

@@ -11,8 +11,8 @@ import appmax.optimization
 import appmax.trainable
 import appmax.logger as logger
 
-ERROR_COLS = ['error_sample', 'error_nearby']
-RESULT_COLS = ERROR_COLS + ['polytope_width', 'integral', 'time']
+ERROR_COLS = ['error_sample', 'error_nearby', 'union_error']
+RESULT_COLS = ERROR_COLS + ['polytope_width', 'integral', 'union_width', 'time']
 UNSCALED_COLS = ERROR_COLS + ['integral']
 
 
@@ -30,6 +30,7 @@ def run(
     experiment_path: Path | str,
     run_id: str,
     eval_net: appmax.evaluation.EvaluationNet,
+    original_net: torch.nn.Module,
     samples: list[torch.Tensor],
     metrics: appmax.optimization.Metrics,
     use_memory: bool = True,
@@ -45,12 +46,13 @@ def run(
     wrapped_step = step
     if use_memory:
         memory = joblib.Memory(experiment_path / 'memory', verbose=0)
-        wrapped_step = memory.cache(wrapped_step, ignore=['eval_net', 'input_sample'])
+        wrapped_step = memory.cache(wrapped_step, ignore=['eval_net', 'original_net', 'input_sample'])
 
     # setup generators
     wrapped_step = joblib.delayed(wrapped_step)
     with joblib.Parallel(return_as='generator_unordered') as para:
-        results_gen = para(wrapped_step(run_id, i, metrics, eval_net, sample) for i, sample in enumerate(samples))
+        results_gen = para(wrapped_step(run_id, i, metrics, eval_net, original_net, sample)
+                           for i, sample in enumerate(samples))
         progress_gen = logger.progress(results_gen, total=len(samples), smoothing=0, main=True)
 
         # run & process output
@@ -66,9 +68,14 @@ def run(
     describe(df_results_unscaled).to_csv(experiment_path / f'{run_id}_described_unscaled.csv')
 
     # save found points where error is maximum
-    if not df['input_nearby'].isna().any():
-        input_nearby_stack = torch.stack(df['input_nearby'].to_list())
-        torch.save(input_nearby_stack, experiment_path / f'{run_id}_tensors.pt')
+    found = {}
+
+    for column in ['input_nearby', 'union_input']:
+        if not df[column].isna().any():
+            found[column] = torch.stack(df[column].to_list())
+
+    if found:
+        torch.save(found, experiment_path / f'{run_id}_tensors.pt')
 
     # show both the sample and nearby points
     if show_tensors:
@@ -83,18 +90,23 @@ def run(
 
 def describe(df_results: pd.DataFrame) -> pd.DataFrame:
     described = df_results.describe(percentiles=[0.5])
-    weights = df_results.get('polytope_width')
+    weighted = {}
+    polytope_widths = df_results.get('polytope_width')
+    union_widths = df_results.get('union_width')
 
-    if weights is not None and weights.sum() > 0:
-        weighted = {
-            k: np.average(df_results[k], weights=weights)
-            for k in ['error_sample', 'error_nearby'] if not df_results[k].isna().any()
-        }
+    def compute_weighted_average(column, weights, sum_only=False):
+        if weights is not None and weights.sum() > 0 and not df_results[column].isna().any():
+            if sum_only:
+                weighted[column] = df_results[column].sum() / weights.sum()
+            else:
+                weighted[column] = np.average(df_results[column], weights=weights)
 
-        if not df_results['integral'].isna().any():
-            # integrals are already "weighted"
-            weighted['integral'] = df_results['integral'].sum() / weights.sum()
+    compute_weighted_average('error_sample', polytope_widths)
+    compute_weighted_average('error_nearby', polytope_widths)
+    compute_weighted_average('integral', polytope_widths, sum_only=True)  # integrals are already "weighted"
+    compute_weighted_average('union_error', union_widths)
 
+    if weighted:
         described.loc['weighted'] = pd.Series(weighted)
 
     return described
@@ -105,12 +117,13 @@ def step(
     sample_index: int,
     metrics: appmax.optimization.Metrics,
     eval_net: appmax.evaluation.EvaluationNet,
+    original_net: torch.nn.Module,
     input_sample: torch.Tensor
 ) -> dict:
     """function for parallel execution
-    (run_id & sample_index & metrics are used for caching, eval_net & input_sample are ignored)"""
+    (run_id & sample_index & metrics are used for caching, eval_net & original_net & input_sample are ignored)"""
     start_time = time.time()
-    result = single(eval_net, input_sample, metrics)
+    result = single(eval_net, original_net, input_sample, metrics)
     result['sample_index'] = sample_index
     result['time'] = time.time() - start_time
     return result
@@ -118,6 +131,7 @@ def step(
 
 def single(
     eval_net: appmax.evaluation.EvaluationNet,
+    original_net: torch.nn.Module,
     input_sample: torch.Tensor,
     metrics: appmax.optimization.Metrics,
     debug: bool = False
@@ -127,7 +141,7 @@ def single(
     with torch.no_grad():
         error_sample = eval_net(input_sample_b).item()
 
-    result = appmax.optimization.analyze_linear_region(eval_net, input_sample, metrics, debug=debug)
+    result = appmax.optimization.analyze_linear_region(eval_net, original_net, input_sample, metrics, debug=debug)
 
     return {
         'input_sample': input_sample,
@@ -136,19 +150,23 @@ def single(
         'error_nearby': result.fun,
         'polytope_width': result.width,
         'integral': result.integral,
+        'union_input': result.union.x if result.union else None,
+        'union_error': result.union.fun if result.union else None,
+        'union_width': result.union.width if result.union else None,
     }
 
 
 def track_widths(experiment_path: Path | str, eval_net: appmax.evaluation.EvaluationNet, samples: list[torch.Tensor], num_directions: int):
     experiment_path = Path(experiment_path)
     experiment_path.mkdir(parents=True, exist_ok=True)
+    assert eval_net.metadata.bounds is not None
     data = []
 
     def extend_data(i: int, type_: str, widths: torch.Tensor):
         data.extend([{'sample': i, 'type': type_, 'directions': d+1, 'width': w.item()} for d, w in enumerate(widths)])
 
     for i, sample in enumerate(logger.progress(samples, main=True)):
-        lp = appmax.optimization.lp_from_eval_net(eval_net, sample)
+        lp = appmax.optimization.lp_from_net(eval_net, eval_net.metadata.bounds, sample)
         polytope_widths = appmax.optimization.polytope_widths(lp, num_directions, cummulative_avg=True)
         extend_data(i, 'polytope', polytope_widths)
         extended_polytope = appmax.optimization.prepare_integral(lp)

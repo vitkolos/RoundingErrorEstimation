@@ -68,18 +68,18 @@ def main(dataset, run_id, metrics, train, bits, solver, num_samples, jobs):
         model_approx.round(bits=bits)
 
         eval_net = appmax.evaluation.EvaluationNet(model, model_approx, data_split.metadata, seq_name=seq_name).eval()
-        samples = appmax.experiment.get_samples(data_split.test, num_samples)
+        samples = appmax.experiment.get_samples(model.subset(data_split.test), num_samples)
 
-        with appmax.solving.solver_config(solver):
-            results = appmax.experiment.single(eval_net, samples[1], metrics, debug=True)
-        print(results)
+        # with appmax.solving.solver_config(solver):
+        #     results = appmax.experiment.single(eval_net, getattr(model, seq_name), samples[1], metrics, debug=True)
+        # print(results)
 
         # loader_dev = torch.utils.data.DataLoader(data_split.dev, batch_size=model.batch_size)
         # loss_dev, metric_dev = model.evaluate(loader_dev)
         # print(loss_dev)
 
-        # with joblib.parallel_config(backend='loky', n_jobs=jobs), appmax.solving.solver_config(solver):
-        #     appmax.experiment.run(f'experiments/{dataset}', run_id, eval_net, samples, metrics)
+        with joblib.parallel_config(backend='loky', n_jobs=jobs), appmax.solving.solver_config(solver):
+            appmax.experiment.run(f'experiments/{dataset}', run_id, eval_net, getattr(model, seq_name), samples, metrics)
 
         # appmax.experiment.track_widths(f'experiments/{dataset}/widths', eval_net, samples_dev, num_directions=300)
         # appmax.visualization.plot_tracked_widths({'california': f'experiments/california/widths', 'year': f'experiments/year/widths'})

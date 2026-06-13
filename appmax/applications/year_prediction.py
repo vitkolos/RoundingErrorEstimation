@@ -10,7 +10,7 @@ DATA_HOME = 'datasets'
 
 
 
-class YearPredictionDataset(torch.utils.data.Dataset):
+class YearPredictionDataset(appmax.trainable.Dataset):
     """https://web.archive.org/web/20260405131946/https://archive.ics.uci.edu/dataset/203/yearpredictionmsd"""
     # train: first 463,715 examples
     # test: last 51,630 examples

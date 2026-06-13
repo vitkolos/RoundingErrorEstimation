@@ -58,7 +58,7 @@ def load_utkface_from_images():
     return data, target
 
 
-class UTKFaceDataset(torch.utils.data.Dataset):
+class UTKFaceDataset(appmax.trainable.Dataset):
     def __init__(self, data: torch.Tensor, target: torch.Tensor, metadata: appmax.trainable.Metadata):
         self.data = data
         target = target.numpy()

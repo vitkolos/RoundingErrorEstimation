@@ -9,7 +9,7 @@ import numpy as np
 import appmax.trainable
 
 
-class CaliforniaHousingDataset(torch.utils.data.Dataset):
+class CaliforniaHousingDataset(appmax.trainable.Dataset):
     """https://scikit-learn.org/stable/datasets/real_world.html#california-housing-dataset"""
 
     def __init__(self, data: np.ndarray, metadata: appmax.trainable.Metadata):

@@ -1,7 +1,8 @@
 import torch
 from torch import nn
 import torchmetrics
-import tqdm
+
+import appmax.logger
 from appmax.trainable import Metadata
 
 
@@ -22,7 +23,7 @@ def compute_error_aggregate(first: nn.Module, second: nn.Module, loader: torch.u
     max_err = torchmetrics.MaxMetric()
     avg_err = torchmetrics.MeanMetric()
 
-    for xs, _ in tqdm.tqdm(loader, leave=False):
+    for xs, _ in appmax.logger.progress(loader):
         xs = xs.to(device)
         error_tensor = compute_error_tensor(first, second, xs)
         max_err.update(error_tensor)

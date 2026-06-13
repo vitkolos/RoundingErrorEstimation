@@ -1,12 +1,12 @@
 import pandas as pd
 import torch
 import torchmetrics
-from appmax.trainable import nn, TrainableModel, DataSplit
+from appmax.trainable import nn, TrainableModel, DataSplit, Dataset
 
 DATA_HOME = 'datasets'
 
 
-class EnergyEfficiencyDataset(torch.utils.data.Dataset):
+class EnergyEfficiencyDataset(Dataset):
     """https://archive.ics.uci.edu/dataset/242/energy+efficiency"""
 
     def __init__(self):

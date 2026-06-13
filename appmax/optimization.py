@@ -1,7 +1,9 @@
+from __future__ import annotations
 from dataclasses import dataclass
 import enum
 
 import torch
+import polytopewalk
 
 import appmax.neurons
 import appmax.evaluation
@@ -14,6 +16,7 @@ class Metrics(enum.Flag):
     MAXIMUM = enum.auto()
     WIDTH = enum.auto()
     INTEGRAL = enum.auto()
+    UNION = enum.auto()
 
 
 @dataclass
@@ -22,18 +25,26 @@ class PolytopeResult:
     fun: float | None = None  # value of the error function (in its maximum)
     width: float | None = None  # polytope mean width
     integral: float | None = None  # mean width of the extended polytope
+    union: PolytopeResult | None = None
 
 
-def analyze_linear_region(eval_net: appmax.evaluation.EvaluationNet, sample: torch.Tensor, metrics: Metrics = Metrics.MAXIMUM, debug: bool = False) -> PolytopeResult:
+def analyze_linear_region(
+    eval_net: appmax.evaluation.EvaluationNet,
+    original_net: torch.nn.Module,
+    sample: torch.Tensor,
+    metrics: Metrics = Metrics.MAXIMUM,
+    debug: bool = False,
+) -> PolytopeResult:
     """'sample' needs to be a single sample (not a batch)"""
-    lp = lp_from_eval_net(eval_net, sample)
+    assert eval_net.metadata.bounds is not None
+    lp = lp_from_net(eval_net, eval_net.metadata.bounds, sample)
 
     if debug:
         check_feasibility(sample, lp)
 
     result = PolytopeResult()
 
-    if Metrics.MAXIMUM in metrics:
+    if Metrics.MAXIMUM in metrics or Metrics.UNION in metrics:
         result.x, result.fun = appmax.solving.solve(lp, verbose=debug)
         result.x = result.x.reshape_as(sample)
 
@@ -44,16 +55,25 @@ def analyze_linear_region(eval_net: appmax.evaluation.EvaluationNet, sample: tor
         extended_polytope = prepare_integral(lp)
         result.integral = polytope_widths(extended_polytope).mean().item()
 
+    if Metrics.UNION in metrics:
+        union_lp = lp_from_net(original_net, eval_net.metadata.bounds, sample)
+        result.union = PolytopeResult()
+        result.union.width = polytope_widths(union_lp).mean().item()
+        result.union.x, result.union.fun = union_max(eval_net, union_lp, sample)
+        result.union.x = result.union.x.reshape_as(sample)
+
+        if result.fun > result.union.fun:
+            result.union.x, result.union.fun = result.x, result.fun
+
     return result
 
 
-def lp_from_eval_net(eval_net: appmax.evaluation.EvaluationNet, sample: torch.Tensor) -> LinearProgram:
+def lp_from_net(eval_net: appmax.evaluation.EvaluationNet, bounds: Bounds, sample: torch.Tensor) -> LinearProgram:
     """'sample' needs to be a single sample (not a batch)"""
     constraints = appmax.neurons.Constraints()
     message = appmax.neurons.Message(sample)
     message = appmax.neurons.collect(eval_net, message, constraints)
-    assert eval_net.metadata.bounds is not None
-    return lp_from_collected(message, constraints, eval_net.metadata.bounds)
+    return lp_from_collected(message, constraints, bounds)
 
 
 def lp_from_collected(message: appmax.neurons.Message, constraints: appmax.neurons.Constraints, bounds: Bounds) -> LinearProgram:
@@ -103,6 +123,29 @@ def polytope_widths(polytope: Polytope, num_directions: int = 100, cummulative_a
     results = appmax.solving.solve(lp, multiple_objectives=directions)
     widths = torch.tensor([(res_max.fun - res_min.fun) for res_min, res_max in results])
     return widths if not cummulative_avg else widths.cumsum(dim=0) / torch.arange(1, num_directions+1)
+
+
+def union_max(eval_net: appmax.evaluation.EvaluationNet, union_lp: LinearProgram, sample_initial: torch.Tensor) -> appmax.solving.OptimizationResult:
+    MCMC_POINTS = 50
+    SEED = 42
+    walker = polytopewalk.dense.HitAndRun()
+    samples = walker.generateCompleteWalk(
+        niter=MCMC_POINTS,
+        init=sample_initial.flatten(),
+        A=union_lp.A_ub,
+        b=union_lp.b_ub,
+        burnin=0,  # discard the first few samples
+        thin=1,  # only keep every n-th sample to reduce correlation
+        seed=SEED,
+    )
+    results = []
+
+    for sample in samples:
+        sample = torch.from_numpy(sample).reshape_as(sample_initial).to(dtype=torch.get_default_dtype())
+        result = appmax.solving.solve(lp_from_net(eval_net, eval_net.metadata.bounds, sample))
+        results.append(result)
+
+    return max(results, key=lambda result: result.fun)
 
 
 def check_feasibility(sample: torch.Tensor, polytope: Polytope, abs_tol: float = 1e-6):
