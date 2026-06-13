@@ -46,8 +46,8 @@ def main(dataset, run_id, metrics, train, bits, solver, num_samples, jobs):
             MODEL_CLASS = year_prediction.YearNet
             data_split = year_prediction.YearPredictionSplit()
         case 'utkface':
-            MODEL_FILE = "models/utkface_net.pt"
-            MODEL_CLASS = utkface.FaceConvNet
+            MODEL_FILE = "models/utkface_small.pt"
+            MODEL_CLASS = utkface.FaceConvNetSmall
             data_split = utkface.UTKFaceSplit()
         case _:
             raise NotImplementedError(f"'{dataset}' dataset is not available")
@@ -69,6 +69,9 @@ def main(dataset, run_id, metrics, train, bits, solver, num_samples, jobs):
 
         eval_net = appmax.evaluation.EvaluationNet(model, model_approx, data_split.metadata, seq_name=seq_name).eval()
         samples = appmax.experiment.get_samples(data_split.test, num_samples)
+
+        # results = appmax.experiment.single(eval_net, samples[0], metrics, debug=True)
+        # print(results)
 
         loader_dev = torch.utils.data.DataLoader(data_split.dev, batch_size=model.batch_size)
         loss_dev, metric_dev = model.evaluate(loader_dev)

@@ -15,15 +15,21 @@ import appmax.logger
 DATA_HOME = 'datasets'
 DATASET_FILE = f'{DATA_HOME}/utkface.pt'
 IMG_CHANNELS = 3
-IMG_SIZE = 100  # original is 200
+IMG_SIZE = 32  # original is 200
 
 
 def load_utkface() -> tuple[torch.Tensor, torch.Tensor]:
     if os.path.isfile(DATASET_FILE):
         dataset = torch.load(DATASET_FILE)
-    else:
-        dataset = load_utkface_from_images()
-        torch.save(dataset, DATASET_FILE)
+        N, C, H, W = dataset[0].shape
+
+        if C == IMG_CHANNELS and H == IMG_SIZE and W == IMG_SIZE:
+            return dataset
+        else:
+            print('dataset shape does not match')
+
+    dataset = load_utkface_from_images()
+    torch.save(dataset, DATASET_FILE)
     return dataset
 
 
@@ -94,6 +100,7 @@ class UTKFaceSplit(appmax.trainable.DataSplit):
         self.dev = UTKFaceDataset(data_dev, target_dev, self.metadata)
         self.test = UTKFaceDataset(data_test, target_test, self.metadata)
 
+
 class FaceConvNet(appmax.trainable.TrainableModel):
     def __init__(self):
         super().__init__(
@@ -115,6 +122,51 @@ class FaceConvNet(appmax.trainable.TrainableModel):
 
                 nn.Flatten(),
                 nn.Linear(128 * 12 * 12, 256),
+                nn.ReLU(),
+                nn.Dropout(0.3),
+
+                nn.Linear(256, 64),
+                nn.ReLU(),
+
+                nn.Linear(64, 1),
+            )
+        )
+        self.configure(
+            loss_fn=nn.MSELoss(),
+            optimizer=torch.optim.AdamW(self.parameters(), lr=1e-4, weight_decay=1e-4),
+            metric_fn=torchmetrics.MeanSquaredError(),
+            epochs=70,
+        )
+
+        def init_weights(module):
+            if isinstance(module, nn.Conv2d) or isinstance(module, nn.Linear):
+                nn.init.kaiming_normal_(module.weight, mode='fan_out', nonlinearity='relu')
+                nn.init.zeros_(module.bias)
+
+        self.apply(init_weights)
+
+
+class FaceConvNetSmall(appmax.trainable.TrainableModel):
+    def __init__(self):
+        super().__init__(
+            nn.Sequential(
+                # (3)×32×32 -> (32)×16×16
+                nn.Conv2d(3, 32, 3, padding='same'),
+                nn.ReLU(),
+                nn.MaxPool2d(2),
+
+                # (32)×16×16 -> (64)×8x8
+                nn.Conv2d(32, 64, 3, padding='same'),
+                nn.ReLU(),
+                nn.MaxPool2d(2),
+
+                # (64)×8x8 -> (128)×4x4
+                nn.Conv2d(64, 128, 3, padding='same'),
+                nn.ReLU(),
+                nn.MaxPool2d(2),
+
+                nn.Flatten(),
+                nn.Linear(128 * 4 * 4, 256),
                 nn.ReLU(),
                 nn.Dropout(0.3),
 
