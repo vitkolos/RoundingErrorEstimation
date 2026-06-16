@@ -8,6 +8,7 @@ import polytopewalk
 import appmax.neurons
 import appmax.evaluation
 import appmax.solving
+import appmax.logger
 from appmax.solving import Polytope, LinearProgram
 from appmax.trainable import Bounds
 
@@ -68,11 +69,11 @@ def analyze_linear_region(
     return result
 
 
-def lp_from_net(eval_net: appmax.evaluation.EvaluationNet, bounds: Bounds, sample: torch.Tensor) -> LinearProgram:
+def lp_from_net(net: torch.nn.Module, bounds: Bounds, sample: torch.Tensor) -> LinearProgram:
     """'sample' needs to be a single sample (not a batch)"""
     constraints = appmax.neurons.Constraints()
     message = appmax.neurons.Message(sample)
-    message = appmax.neurons.collect(eval_net, message, constraints)
+    message = appmax.neurons.collect(net, message, constraints)
     return lp_from_collected(message, constraints, bounds)
 
 
@@ -125,26 +126,28 @@ def polytope_widths(polytope: Polytope, num_directions: int = 100, cummulative_a
     return widths if not cummulative_avg else widths.cumsum(dim=0) / torch.arange(1, num_directions+1)
 
 
-def union_max(eval_net: appmax.evaluation.EvaluationNet, union_lp: LinearProgram, sample_initial: torch.Tensor) -> appmax.solving.OptimizationResult:
+def samples_in_polytope(polytope: Polytope, sample_initial: torch.Tensor):
     MCMC_POINTS = 50
     SEED = 42
     walker = polytopewalk.dense.HitAndRun()
     samples = walker.generateCompleteWalk(
         niter=MCMC_POINTS,
         init=sample_initial.flatten(),
-        A=union_lp.A_ub,
-        b=union_lp.b_ub,
+        A=polytope.A_ub,
+        b=polytope.b_ub,
         burnin=0,  # discard the first few samples
         thin=1,  # only keep every n-th sample to reduce correlation
         seed=SEED,
     )
-    results = []
+    samples_tensor = torch.from_numpy(samples).to(dtype=torch.get_default_dtype())
+    samples_tensor = samples_tensor.reshape(-1, *sample_initial.shape)
+    return samples_tensor
 
-    for sample in samples:
-        sample = torch.from_numpy(sample).reshape_as(sample_initial).to(dtype=torch.get_default_dtype())
-        result = appmax.solving.solve(lp_from_net(eval_net, eval_net.metadata.bounds, sample))
-        results.append(result)
 
+def union_max(eval_net: appmax.evaluation.EvaluationNet, union_polytope: LinearProgram, sample_initial: torch.Tensor) -> appmax.solving.OptimizationResult:
+    samples = samples_in_polytope(union_polytope, sample_initial)
+    results = (appmax.solving.solve(lp_from_net(eval_net, eval_net.metadata.bounds, sample))
+               for sample in appmax.logger.progress(samples))
     return max(results, key=lambda result: result.fun)
 
 

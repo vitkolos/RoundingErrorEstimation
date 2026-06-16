@@ -17,12 +17,28 @@ class Polytope:
     A_ub: torch.Tensor
     b_ub: torch.Tensor
 
+    def to_polytope_hashable(self):
+        return PolytopeHashable(self.A_ub, self.b_ub)
+
 
 @dataclasses.dataclass
 class LinearProgram(Polytope):
     objective: torch.Tensor
     bias: float = 0.0
     maximize: bool = True
+
+
+@dataclasses.dataclass
+class PolytopeHashable:
+    A_ub: torch.Tensor
+    b_ub: torch.Tensor
+
+    def __eq__(self, other):
+        return type(other) is PolytopeHashable and torch.equal(self.A_ub, other.A_ub) and torch.equal(self.b_ub, other.b_ub)
+
+    def __hash__(self):
+        # hash_tensor reduces the whole tensor using XOR, there may be frequent collisions
+        return hash((self.A_ub.hash_tensor().item(), self.b_ub.hash_tensor().item()))
 
 
 class OptimizationResult(NamedTuple):
