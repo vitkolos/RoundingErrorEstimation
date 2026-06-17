@@ -9,7 +9,7 @@ import appmax.neurons
 import appmax.evaluation
 import appmax.solving
 import appmax.logger
-from appmax.solving import Polytope, LinearProgram
+from appmax.solving import Polytope, LinearProgram, PolytopeHashable, OptimizationResult
 from appmax.trainable import Bounds
 
 
@@ -26,7 +26,7 @@ class PolytopeResult:
     fun: float | None = None  # value of the error function (in its maximum)
     width: float | None = None  # polytope mean width
     integral: float | None = None  # mean width of the extended polytope
-    union: PolytopeResult | None = None
+    union: PolytopeResult | None = None  # features of the larger polytope (taken from the original network)
 
 
 def analyze_linear_region(
@@ -46,7 +46,8 @@ def analyze_linear_region(
     result = PolytopeResult()
 
     if Metrics.MAXIMUM in metrics or Metrics.UNION in metrics:
-        result.x, result.fun = appmax.solving.solve(lp, verbose=debug)
+        opt_result_initial = appmax.solving.solve(lp, verbose=debug)
+        result.x, result.fun = opt_result_initial
         result.x = result.x.reshape_as(sample)
 
     if Metrics.WIDTH in metrics:
@@ -57,14 +58,7 @@ def analyze_linear_region(
         result.integral = polytope_widths(extended_polytope).mean().item()
 
     if Metrics.UNION in metrics:
-        union_lp = lp_from_net(original_net, eval_net.metadata.bounds, sample)
-        result.union = PolytopeResult()
-        result.union.width = polytope_widths(union_lp).mean().item()
-        result.union.x, result.union.fun = union_max(eval_net, union_lp, sample)
-        result.union.x = result.union.x.reshape_as(sample)
-
-        if result.fun > result.union.fun:
-            result.union.x, result.union.fun = result.x, result.fun
+        result.union = analyze_union(eval_net, original_net, sample, lp, opt_result_initial)
 
     return result
 
@@ -126,29 +120,48 @@ def polytope_widths(polytope: Polytope, num_directions: int = 100, cummulative_a
     return widths if not cummulative_avg else widths.cumsum(dim=0) / torch.arange(1, num_directions+1)
 
 
-def samples_in_polytope(polytope: Polytope, sample_initial: torch.Tensor):
-    MCMC_POINTS = 50
-    SEED = 42
+def analyze_union(
+    eval_net: appmax.evaluation.EvaluationNet,
+    original_net: torch.nn.Module,
+    sample_initial: torch.Tensor,
+    lp_initial: LinearProgram,
+    opt_result_initial: OptimizationResult
+) -> PolytopeResult:
+    union_lp = lp_from_net(original_net, eval_net.metadata.bounds, sample_initial)
+    union_result = PolytopeResult()
+    union_result.width = polytope_widths(union_lp).mean().item()
+    union = {lp_initial.to_polytope_hashable(): opt_result_initial}
+    union_extend(union, eval_net, samples_in_polytope(union_lp, sample_initial))
+    union_result.x, union_result.fun = max(union.values(), key=lambda result: result.fun)
+    union_result.x = union_result.x.reshape_as(sample_initial)
+    return union_result
+
+
+def samples_in_polytope(polytope: Polytope, sample_initial: torch.Tensor, num_samples: int = 50, seed: int = 42):
     walker = polytopewalk.dense.HitAndRun()
     samples = walker.generateCompleteWalk(
-        niter=MCMC_POINTS,
+        niter=num_samples,
         init=sample_initial.flatten(),
         A=polytope.A_ub,
         b=polytope.b_ub,
         burnin=0,  # discard the first few samples
         thin=1,  # only keep every n-th sample to reduce correlation
-        seed=SEED,
+        seed=seed,
     )
     samples_tensor = torch.from_numpy(samples).to(dtype=torch.get_default_dtype())
     samples_tensor = samples_tensor.reshape(-1, *sample_initial.shape)
     return samples_tensor
 
 
-def union_max(eval_net: appmax.evaluation.EvaluationNet, union_polytope: LinearProgram, sample_initial: torch.Tensor) -> appmax.solving.OptimizationResult:
-    samples = samples_in_polytope(union_polytope, sample_initial)
-    results = (appmax.solving.solve(lp_from_net(eval_net, eval_net.metadata.bounds, sample))
-               for sample in appmax.logger.progress(samples))
-    return max(results, key=lambda result: result.fun)
+def union_extend(union: dict[PolytopeHashable, PolytopeResult], eval_net: appmax.evaluation.EvaluationNet, samples: torch.Tensor):
+    for sample in appmax.logger.progress(samples):
+        # we construct the polytope and check if it has already been analyzed
+        # (alternative approach: check if 'sample' belongs to any of the analyzed polytopes)
+        lp = lp_from_net(eval_net, eval_net.metadata.bounds, sample)
+        h = lp.to_polytope_hashable()
+
+        if h not in union:
+            union[h] = appmax.solving.solve(lp)
 
 
 def check_feasibility(sample: torch.Tensor, polytope: Polytope, abs_tol: float = 1e-6):

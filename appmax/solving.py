@@ -17,7 +17,7 @@ class Polytope:
     A_ub: torch.Tensor
     b_ub: torch.Tensor
 
-    def to_polytope_hashable(self):
+    def to_polytope_hashable(self) -> 'PolytopeHashable':
         return PolytopeHashable(self.A_ub, self.b_ub)
 
 
