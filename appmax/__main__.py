@@ -67,21 +67,19 @@ def main(dataset, run_id, metrics, train, bits, solver, num_samples, jobs):
         model_approx.load(MODEL_FILE).eval()
         model_approx.round(bits=bits)
 
-        eval_net = appmax.evaluation.EvaluationNet(model, model_approx, data_split.metadata, seq_name=seq_name).eval()
-        samples = appmax.experiment.get_samples(model.subset(data_split.test), num_samples)
+        # eval_net = appmax.evaluation.EvaluationNet(model, model_approx, data_split.metadata, seq_name=seq_name).eval()
+        # samples = appmax.experiment.get_samples(model.subset(data_split.test), num_samples)
 
-        with appmax.solving.solver_config(solver):
-            results = appmax.experiment.single(eval_net, getattr(model, seq_name), samples[1], metrics, debug=True)
-            print(results)
-            results = appmax.experiment.single(eval_net, getattr(model, seq_name), samples[2], metrics, debug=True)
-            print(results)
+        # with appmax.solving.solver_config(solver):
+        #     results = appmax.experiment.single(eval_net, getattr(model, seq_name), samples[1], metrics, debug=True)
+        #     print(results)
 
-        lp = appmax.optimization.lp_from_net(eval_net, eval_net.metadata.bounds, samples[1])
-        print(lp.b_ub.shape[0], 'constraints')
+        # lp = appmax.optimization.lp_from_net(eval_net, eval_net.metadata.bounds, samples[1])
+        # print(lp.b_ub.shape[0], 'constraints')
 
-        loader_dev = torch.utils.data.DataLoader(data_split.dev, batch_size=model.batch_size)
-        loss_dev, metric_dev = model.evaluate(loader_dev)
-        print(loss_dev, 'mse')
+        # loader_dev = torch.utils.data.DataLoader(data_split.dev, batch_size=model.batch_size)
+        # loss_dev, metric_dev = model.evaluate(loader_dev)
+        # print(loss_dev, 'mse')
 
         # with joblib.parallel_config(backend='loky', n_jobs=jobs), appmax.solving.solver_config(solver):
         #     appmax.experiment.run(f'experiments/{dataset}', run_id, eval_net, getattr(model, seq_name), samples, metrics)
@@ -117,6 +115,8 @@ def main(dataset, run_id, metrics, train, bits, solver, num_samples, jobs):
         # with open('experiments/points_unscaled.html', 'w') as f:
         #     tables = [appmax.visualization.list_points(d, r, s, indices, aliases) for d, s in datasets for r in runs]
         #     f.write(appmax.visualization.tables_to_html(tables, into_one=False))
+
+        appmax.visualization.evaluate_subsets(f'experiments/{dataset}', 'cardinalities', data_split.metadata.error_scaling)
 
 
 if __name__ == '__main__':

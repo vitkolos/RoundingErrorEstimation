@@ -2,6 +2,7 @@ from pathlib import Path
 import typing
 import re
 
+import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 
@@ -181,3 +182,33 @@ def plot_tracked_widths(experiments: dict[str, str]):
     for type_ in types:
         for sample in range(first_k):
             plot_charts('different', f'{type_}_{sample+1:02d}', [(e, (sample, type_), e) for e in experiments.keys()])
+
+
+def evaluate_subsets(experiment_path: Path | str, run_id: str, error_scaling: float, num_subsets: int = 100, seed: int = 42):
+    experiment_path = Path(experiment_path)
+    df_results = pd.read_csv(experiment_path / f'{run_id}_results.csv', index_col=0)
+    df_results.loc[:, appmax.experiment.UNSCALED_COLS] *= error_scaling
+    rng = np.random.default_rng(seed)
+    stats_for_sizes = []
+
+    # for size in range(1, len(df_results)):
+    for size in [20]:  # FIXME
+        subsets_same_size = []
+        for _ in range(num_subsets):
+            indices = rng.choice(len(df_results), size, replace=False)
+            described = appmax.experiment.describe(df_results.loc[indices])
+            subsets_same_size.append({
+                'sample_max': described.loc['max', 'error_sample'],
+                'sample_mean': described.loc['mean', 'error_sample'],
+                'nearby_max': described.loc['max', 'error_nearby'],
+                'nearby_mean': described.loc['mean', 'error_nearby'],
+                'nearby_weighted_sum': described.loc['weighted', 'error_nearby'],
+                'integral_divided_sum': described.loc['weighted', 'integral'],
+                # TODO: add union
+            })
+        stats_same_size = pd.DataFrame(subsets_same_size).describe()
+        stats_for_sizes.append({
+            # ...
+        })
+
+    # pd.DataFrame(stats_for_sizes).to_csv()
