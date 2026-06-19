@@ -46,8 +46,8 @@ def main(dataset, run_id, metrics, train, bits, solver, num_samples, jobs):
             MODEL_CLASS = year_prediction.YearNet
             data_split = year_prediction.YearPredictionSplit()
         case 'utkface':
-            MODEL_FILE = "models/utkface_small.pt"
-            MODEL_CLASS = utkface.FaceConvNetSmall
+            MODEL_FILE = "models/utkface_smaller.pt"
+            MODEL_CLASS = utkface.FaceConvNetSmaller
             data_split = utkface.UTKFaceSplit()
         case _:
             raise NotImplementedError(f"'{dataset}' dataset is not available")
@@ -70,16 +70,21 @@ def main(dataset, run_id, metrics, train, bits, solver, num_samples, jobs):
         eval_net = appmax.evaluation.EvaluationNet(model, model_approx, data_split.metadata, seq_name=seq_name).eval()
         samples = appmax.experiment.get_samples(model.subset(data_split.test), num_samples)
 
-        # with appmax.solving.solver_config(solver):
-        #     results = appmax.experiment.single(eval_net, getattr(model, seq_name), samples[1], metrics, debug=True)
-        # print(results)
+        with appmax.solving.solver_config(solver):
+            results = appmax.experiment.single(eval_net, getattr(model, seq_name), samples[1], metrics, debug=True)
+            print(results)
+            results = appmax.experiment.single(eval_net, getattr(model, seq_name), samples[2], metrics, debug=True)
+            print(results)
 
-        # loader_dev = torch.utils.data.DataLoader(data_split.dev, batch_size=model.batch_size)
-        # loss_dev, metric_dev = model.evaluate(loader_dev)
-        # print(loss_dev)
+        lp = appmax.optimization.lp_from_net(eval_net, eval_net.metadata.bounds, samples[1])
+        print(lp.b_ub.shape[0], 'constraints')
 
-        with joblib.parallel_config(backend='loky', n_jobs=jobs), appmax.solving.solver_config(solver):
-            appmax.experiment.run(f'experiments/{dataset}', run_id, eval_net, getattr(model, seq_name), samples, metrics)
+        loader_dev = torch.utils.data.DataLoader(data_split.dev, batch_size=model.batch_size)
+        loss_dev, metric_dev = model.evaluate(loader_dev)
+        print(loss_dev, 'mse')
+
+        # with joblib.parallel_config(backend='loky', n_jobs=jobs), appmax.solving.solver_config(solver):
+        #     appmax.experiment.run(f'experiments/{dataset}', run_id, eval_net, getattr(model, seq_name), samples, metrics)
 
         # appmax.experiment.track_widths(f'experiments/{dataset}/widths', eval_net, samples_dev, num_directions=300)
         # appmax.visualization.plot_tracked_widths({'california': f'experiments/california/widths', 'year': f'experiments/year/widths'})

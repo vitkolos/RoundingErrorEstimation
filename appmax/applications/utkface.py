@@ -189,3 +189,48 @@ class FaceConvNetSmall(appmax.trainable.TrainableModel):
                 nn.init.zeros_(module.bias)
 
         self.apply(init_weights)
+
+
+class FaceConvNetSmaller(appmax.trainable.TrainableModel):
+    def __init__(self):
+        super().__init__(
+            nn.Sequential(
+                # (3)×32×32 -> (16)×16×16
+                nn.Conv2d(3, 16, 3, padding='same'),
+                nn.ReLU(),
+                nn.MaxPool2d(2),
+
+                # (16)×16×16 -> (32)×8x8
+                nn.Conv2d(16, 32, 3, padding='same'),
+                nn.ReLU(),
+                nn.MaxPool2d(2),
+
+                # (32)×8x8 -> (64)×4x4
+                nn.Conv2d(32, 64, 3, padding='same'),
+                nn.ReLU(),
+                nn.MaxPool2d(2),
+
+                nn.Flatten(),
+                nn.Linear(64 * 4 * 4, 256),
+                nn.ReLU(),
+                nn.Dropout(0.5),
+
+                nn.Linear(256, 64),
+                nn.ReLU(),
+
+                nn.Linear(64, 1),
+            )
+        )
+        self.configure(
+            loss_fn=nn.MSELoss(),
+            optimizer=torch.optim.AdamW(self.parameters(), lr=1e-4, weight_decay=1e-4),
+            metric_fn=torchmetrics.MeanSquaredError(),
+            epochs=50,
+        )
+
+        def init_weights(module):
+            if isinstance(module, nn.Conv2d) or isinstance(module, nn.Linear):
+                nn.init.kaiming_normal_(module.weight, mode='fan_out', nonlinearity='relu')
+                nn.init.zeros_(module.bias)
+
+        self.apply(init_weights)
