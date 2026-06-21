@@ -5,6 +5,7 @@ import re
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+from matplotlib.backends.backend_pdf import PdfPages
 
 import appmax.experiment
 import appmax.logger
@@ -76,29 +77,32 @@ def list_points(experiment_path: Path | str, run_id: str, error_scaling: float, 
     return header + styled_df.to_html()
 
 
+TEX_ALIASES = {
+    'sample_max': r'E_T',
+    'sample_mean': r'\overline{E_T}',
+    'nearby_max': r'E_{\Xi_T}',
+    'nearby_mean': r'\overline{E_{\Xi_T}}',
+    'nearby_weighted_sum': r'\overline E^{\tilde d}_{\Xi_T}',
+    'integral_divided_sum': r'\overline E^{\tilde d}_{\Xi_T^E}',
+    'error_sample': r'E(x)',
+    'error_nearby': r'E_{\Xi_x}',
+    'polytope_width': r'\tilde d_n(\Xi_x)',
+    'weight': r'\frac{\tilde d_n(\Xi_x)}{S}',
+    'nearby_weighted': r'\frac{\tilde d_n(\Xi_x)}{S} E_{\Xi_x}',
+    'integral_width': r'\tilde d_{n+1}(\Xi_x^E)',
+    'integral_divided': r'\tilde d_{n+1}(\Xi_x^E)\over S',
+    'union_mean': r'\overline E_{\overline \Xi_T}',
+    'union_weighted_sum': r'\overline E^{\tilde d}_{\overline \Xi_T}',
+}
+
+
 def tables_to_html(tables, into_one=True):
     html = ''.join(tables)
 
     if into_one:
         html = '<table>' + re.sub(r'</?table.*?>', '', html) + '</table>'
 
-    katex_aliases = {
-        'sample_max': r'E_T',
-        'sample_mean': r'\overline{E_T}',
-        'nearby_max': r'E_{\Xi_T}',
-        'nearby_mean': r'\overline{E_{\Xi_T}}',
-        'nearby_weighted_sum': r'\overline E^{\tilde d}_{\Xi_T}',
-        'integral_divided_sum': r'\overline E^{\tilde d}_{\Xi_T^E}',
-        'error_sample': r'E(x)',
-        'error_nearby': r'E_{\Xi_x}',
-        'polytope_width': r'\tilde d_n(\Xi_x)',
-        'weight': r'\frac{\tilde d_n(\Xi_x)}{S}',
-        'nearby_weighted': r'\frac{\tilde d_n(\Xi_x)}{S} E_{\Xi_x}',
-        'integral_width': r'\tilde d_{n+1}(\Xi_x^E)',
-        'integral_divided': r'\tilde d_{n+1}(\Xi_x^E)\over S',
-    }
-
-    for column, alias in katex_aliases.items():
+    for column, alias in TEX_ALIASES.items():
         html = html.replace(f'>{column}</th>', f'>\\( {alias} \\)<small>{column.replace('_', ' ')}</small></th>')
 
     style = 'body{font-family:sans-serif} table{border-collapse: collapse;} td,th{padding:0.5rem 1rem;} th{text-align:right} th:not(:first-child){vertical-align:bottom; text-align:left} small{display:block; margin-top:0.5rem}'
@@ -229,16 +233,24 @@ def plot_subsets(experiment_path: Path | str, run_id: str):
     df = pd.read_csv(experiment_path / f'{run_id}_subsets.csv', header=[0, 1], index_col=0)
     columns = df.columns.get_level_values(0).unique().drop('size')
 
-    for column in columns:
-        size = df.loc[:, COL_SIZE]
-        mean = df.loc[:, (column, 'mean')]
-        std = df.loc[:, (column, 'std')]
-        plt.plot(size, mean)
-        plt.fill_between(size, mean-std, mean+std, alpha=0.2)
-        plt.title(column)
-        plt.show()
+    with PdfPages(experiment_path / f'{run_id}_subsets.pdf') as pdf:
+        plt.rcParams['text.usetex'] = True
 
-    # for column in columns:
-    #     plt.plot(df.loc[:, 'size'], df.loc[:, (column, 'std')])
+        for column in columns:
+            size = df.loc[:, COL_SIZE]
+            mean = df.loc[:, (column, 'mean')]
+            std = df.loc[:, (column, 'std')]
+            fig, ax = plt.subplots()
+            plt.plot(size, mean, '.-')
+            plt.fill_between(size, mean-std, mean+std, alpha=0.2)
+            title = column.replace('_', ' ')
 
-    # plt.show()
+            if tex := TEX_ALIASES.get(column):
+                title = f'${tex}$ {title}'
+
+            plt.title(title)
+            plt.grid(True, linestyle='--', alpha=0.5)
+            ax.set_xlabel('cardinality')
+            ax.set_ylabel(r'metric ($\mu\pm\sigma$)')
+            pdf.savefig()
+            plt.close()
