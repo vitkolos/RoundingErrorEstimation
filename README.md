@@ -10,6 +10,7 @@ cd RoundingErrorEstimation
 # install dependencies (using one of the following commands)
 uv sync             # if uv is available
 pip install -e .    # otherwise
+# to correctly install cuOpt on Linux without uv, you may need to add --extra-index-url=https://pypi.nvidia.com
 ```
 
 ## Contents
