@@ -185,6 +185,9 @@ def plot_tracked_widths(experiments: dict[str, str]):
             plot_charts('different', f'{type_}_{sample+1:02d}', [(e, (sample, type_), e) for e in experiments.keys()])
 
 
+COL_SIZE = ('size', 'exact')
+
+
 def evaluate_subsets(experiment_path: Path | str, run_id: str, error_scaling: float):
     SEED = 42
     NUM_SUBSETS = 100
@@ -215,7 +218,7 @@ def evaluate_subsets(experiment_path: Path | str, run_id: str, error_scaling: fl
 
         stats_same_size = pd.DataFrame(subsets_same_size).describe()
         stats_compact = stats_same_size.loc[['mean', 'std']].unstack()
-        stats_compact.loc['size'] = size
+        stats_compact.loc[COL_SIZE] = size
         stats_for_sizes.append(stats_compact)
 
     pd.DataFrame(stats_for_sizes).to_csv(experiment_path / f'{run_id}_subsets.csv')
@@ -227,6 +230,15 @@ def plot_subsets(experiment_path: Path | str, run_id: str):
     columns = df.columns.get_level_values(0).unique().drop('size')
 
     for column in columns:
-        plt.plot(df.loc[:, 'size'], df.loc[:, (column, 'mean')])
+        size = df.loc[:, COL_SIZE]
+        mean = df.loc[:, (column, 'mean')]
+        std = df.loc[:, (column, 'std')]
+        plt.plot(size, mean)
+        plt.fill_between(size, mean-std, mean+std, alpha=0.2)
         plt.title(column)
         plt.show()
+
+    # for column in columns:
+    #     plt.plot(df.loc[:, 'size'], df.loc[:, (column, 'std')])
+
+    # plt.show()

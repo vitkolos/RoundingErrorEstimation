@@ -116,8 +116,8 @@ def main(dataset, run_id, metrics, train, bits, solver, num_samples, jobs):
         #     tables = [appmax.visualization.list_points(d, r, s, indices, aliases) for d, s in datasets for r in runs]
         #     f.write(appmax.visualization.tables_to_html(tables, into_one=False))
 
-        appmax.visualization.evaluate_subsets(f'experiments/{dataset}', 'cardinalities', data_split.metadata.error_scaling)
-        appmax.visualization.plot_subsets(f'experiments/{dataset}', 'cardinalities')
+        # appmax.visualization.evaluate_subsets(f'experiments/{dataset}', run_id, data_split.metadata.error_scaling)
+        appmax.visualization.plot_subsets(f'experiments/{dataset}', run_id)
 
 
 if __name__ == '__main__':
