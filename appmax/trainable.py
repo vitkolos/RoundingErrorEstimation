@@ -138,12 +138,32 @@ class TrainableModel(BaseModel):
             self.eval()
             return self._execute_epoch(loader, train=False)
 
-    def _execute_epoch(self, loader: torch.utils.data.DataLoader, train: bool) -> tuple[float, float]:
+    def report_metric(self, metric_name: str, data_test: Dataset, error_scaling: float) -> tuple[float, float]:
+        with torch.no_grad():
+            self.eval()
+            loader = torch.utils.data.DataLoader(data_test, batch_size=self.batch_size)
+
+            match metric_name.lower():
+                case 'rmse':
+                    metric_fn = torchmetrics.MeanSquaredError(False)
+                case 'mae':
+                    metric_fn = torchmetrics.MeanAbsoluteError()
+                case _:
+                    raise NotImplementedError(f"'{metric_name}' metric is not available")
+
+            loss, metric = self._execute_epoch(loader, train=False, metric_fn=metric_fn)
+            return metric * error_scaling
+
+    def _execute_epoch(self, loader: torch.utils.data.DataLoader, train: bool, metric_fn: torchmetrics.Metric | None = None) -> tuple[float, float]:
         device = self.device
         loss_sum = 0.0
         total_samples = 0
-        self.metric_fn = self.metric_fn.to(device)
-        self.metric_fn.reset()
+
+        if metric_fn is None:
+            metric_fn = self.metric_fn
+
+        metric_fn = metric_fn.to(device)
+        metric_fn.reset()
 
         for X, y in appmax.logger.progress(loader):
             X, y = X.to(device), y.to(device)
@@ -152,7 +172,7 @@ class TrainableModel(BaseModel):
             loss = self.loss_fn(pred, y)
             loss_sum += loss.item()*N
             total_samples += N
-            self.metric_fn.update(pred, y)
+            metric_fn.update(pred, y)
 
             if train:
                 loss.backward()
@@ -161,7 +181,7 @@ class TrainableModel(BaseModel):
                 self.scheduler is not None and self.scheduler.step()
 
         loss = loss_sum / total_samples
-        metric = self.metric_fn.compute().item()
+        metric = metric_fn.compute().item()
         return loss, metric
 
     def subset(self, dataset: Dataset) -> Dataset:
@@ -181,7 +201,8 @@ class TrainableModel(BaseModel):
         accurate_enough = (targets - predictions).abs() < 1.0
         accurate_count = accurate_enough.sum()
         indices = torch.nonzero(accurate_enough, as_tuple=True)[0].tolist()
-        print(f'subset contains only {accurate_count} data points ({len(dataset)-accurate_count} removed, model was too inaccurate)')
+        print(
+            f'subset contains only {accurate_count} data points ({len(dataset)-accurate_count} removed, model was too inaccurate)')
         return torch.utils.data.Subset(dataset, indices)
 
 

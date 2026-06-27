@@ -77,9 +77,10 @@ def main(dataset, run_id, metrics, train, bits, solver, num_samples, jobs):
         # lp = appmax.optimization.lp_from_net(eval_net, eval_net.metadata.bounds, samples[1])
         # print(lp.b_ub.shape[0], 'constraints')
 
-        # loader_dev = torch.utils.data.DataLoader(data_split.dev, batch_size=model.batch_size)
-        # loss_dev, metric_dev = model.evaluate(loader_dev)
-        # print(loss_dev, 'mse')
+        print('rmse', model.report_metric('rmse', data_split.test, data_split.metadata.error_scaling))
+        print('rmse approx', model_approx.report_metric('rmse', data_split.test, data_split.metadata.error_scaling))
+        print('mae', model.report_metric('mae', data_split.test, data_split.metadata.error_scaling))
+        print('mae approx', model_approx.report_metric('mae', data_split.test, data_split.metadata.error_scaling))
 
         # with joblib.parallel_config(backend='loky', n_jobs=jobs), appmax.solving.solver_config(solver):
         #     appmax.experiment.run(f'experiments/{dataset}', run_id, eval_net, getattr(model, seq_name), samples, metrics)
@@ -117,7 +118,7 @@ def main(dataset, run_id, metrics, train, bits, solver, num_samples, jobs):
         #     f.write(appmax.visualization.tables_to_html(tables, into_one=False))
 
         # appmax.visualization.evaluate_subsets(f'experiments/{dataset}', run_id, data_split.metadata.error_scaling)
-        appmax.visualization.plot_subsets(f'experiments/{dataset}', run_id)
+        # appmax.visualization.plot_subsets(f'experiments/{dataset}', run_id)
 
 
 if __name__ == '__main__':
