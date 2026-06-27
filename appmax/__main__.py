@@ -67,20 +67,20 @@ def main(dataset, run_id, metrics, train, bits, solver, num_samples, jobs):
         model_approx.load(MODEL_FILE).eval()
         model_approx.round(bits=bits)
 
-        # eval_net = appmax.evaluation.EvaluationNet(model, model_approx, data_split.metadata, seq_name=seq_name).eval()
-        # samples = appmax.experiment.get_samples(model.subset(data_split.test), num_samples)
+        eval_net = appmax.evaluation.EvaluationNet(model, model_approx, data_split.metadata, seq_name=seq_name).eval()
+        samples = appmax.experiment.get_samples(model.subset(data_split.test), num_samples)
 
-        # with appmax.solving.solver_config(solver):
-        #     results = appmax.experiment.single(eval_net, getattr(model, seq_name), samples[1], metrics, debug=True)
-        #     print(results)
+        with appmax.solving.solver_config(solver):
+            results = appmax.experiment.single(eval_net, getattr(model, seq_name), samples[1], metrics, debug=True)
+            print(results)
 
         # lp = appmax.optimization.lp_from_net(eval_net, eval_net.metadata.bounds, samples[1])
         # print(lp.b_ub.shape[0], 'constraints')
 
-        print('rmse', model.report_metric('rmse', data_split.test, data_split.metadata.error_scaling))
-        print('rmse approx', model_approx.report_metric('rmse', data_split.test, data_split.metadata.error_scaling))
-        print('mae', model.report_metric('mae', data_split.test, data_split.metadata.error_scaling))
-        print('mae approx', model_approx.report_metric('mae', data_split.test, data_split.metadata.error_scaling))
+        print('rmse', model.quality('rmse', data_split.test, data_split.metadata.error_scaling))
+        print('rmse approx', model_approx.quality('rmse', data_split.test, data_split.metadata.error_scaling))
+        print('mae', model.quality('mae', data_split.test, data_split.metadata.error_scaling))
+        print('mae approx', model_approx.quality('mae', data_split.test, data_split.metadata.error_scaling))
 
         # with joblib.parallel_config(backend='loky', n_jobs=jobs), appmax.solving.solver_config(solver):
         #     appmax.experiment.run(f'experiments/{dataset}', run_id, eval_net, getattr(model, seq_name), samples, metrics)

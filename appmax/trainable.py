@@ -138,7 +138,7 @@ class TrainableModel(BaseModel):
             self.eval()
             return self._execute_epoch(loader, train=False)
 
-    def report_metric(self, metric_name: str, data_test: Dataset, error_scaling: float) -> tuple[float, float]:
+    def quality(self, metric_name: str, data_test: Dataset, error_scaling: float) -> tuple[float, float]:
         with torch.no_grad():
             self.eval()
             loader = torch.utils.data.DataLoader(data_test, batch_size=self.batch_size)
