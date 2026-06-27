@@ -9,6 +9,7 @@ import numpy as np
 import appmax.evaluation
 import appmax.optimization
 import appmax.trainable
+import appmax.solving
 import appmax.logger as logger
 
 ERROR_COLS = ['error_sample', 'error_nearby', 'union_error']
@@ -174,3 +175,13 @@ def track_widths(experiment_path: Path | str, eval_net: appmax.evaluation.Evalua
         extend_data(i, 'integral', integral_widths)
 
     pd.DataFrame(data).to_csv(experiment_path / 'data.csv')
+
+
+def track_union(experiment_path: Path | str, eval_net: appmax.evaluation.EvaluationNet, original_net: torch.nn.Module, samples_initial: list[torch.Tensor], num_samples: int):
+    for sample in samples_initial:
+        lp = appmax.optimization.lp_from_net(eval_net, eval_net.metadata.bounds, sample)
+        opt_result_initial = appmax.solving.solve(lp)
+        tracking_list = [(1, opt_result_initial)]
+        appmax.optimization.analyze_union(eval_net, original_net, sample, lp, opt_result_initial, num_samples=50, tracking_list=tracking_list)
+        # TODO: find running maximum of the tracking list & store the results
+        ...

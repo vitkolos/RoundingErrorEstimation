@@ -125,19 +125,21 @@ def analyze_union(
     original_net: torch.nn.Module,
     sample_initial: torch.Tensor,
     lp_initial: LinearProgram,
-    opt_result_initial: OptimizationResult
+    opt_result_initial: OptimizationResult,
+    num_samples: int = 50,
+    tracking_list: list | None = None
 ) -> PolytopeResult:
     union_lp = lp_from_net(original_net, eval_net.metadata.bounds, sample_initial)
     union_result = PolytopeResult()
     union_result.width = polytope_widths(union_lp).mean().item()
     union = {lp_initial.to_polytope_hashable(): opt_result_initial}
-    union_extend(union, eval_net, samples_in_polytope(union_lp, sample_initial))
+    union_extend(union, eval_net, samples_in_polytope(union_lp, sample_initial, num_samples), tracking_list)
     union_result.x, union_result.fun = max(union.values(), key=lambda result: result.fun)
     union_result.x = union_result.x.reshape_as(sample_initial)
     return union_result
 
 
-def samples_in_polytope(polytope: Polytope, sample_initial: torch.Tensor, num_samples: int = 50, seed: int = 42):
+def samples_in_polytope(polytope: Polytope, sample_initial: torch.Tensor, num_samples: int, seed: int = 42):
     walker = polytopewalk.dense.HitAndRun()
     samples = walker.generateCompleteWalk(
         niter=num_samples,
@@ -153,7 +155,12 @@ def samples_in_polytope(polytope: Polytope, sample_initial: torch.Tensor, num_sa
     return samples_tensor
 
 
-def union_extend(union: dict[PolytopeHashable, PolytopeResult], eval_net: appmax.evaluation.EvaluationNet, samples: torch.Tensor):
+def union_extend(
+    union: dict[PolytopeHashable, PolytopeResult],
+    eval_net: appmax.evaluation.EvaluationNet,
+    samples: torch.Tensor,
+    tracking_list: list | None = None
+):
     for sample in appmax.logger.progress(samples):
         # we construct the polytope and check if it has already been analyzed
         # (alternative approach: check if 'sample' belongs to any of the analyzed polytopes)
@@ -162,6 +169,9 @@ def union_extend(union: dict[PolytopeHashable, PolytopeResult], eval_net: appmax
 
         if h not in union:
             union[h] = appmax.solving.solve(lp)
+
+        if tracking_list is not None:
+            tracking_list.append((len(union), union[h]))
 
 
 def check_feasibility(sample: torch.Tensor, polytope: Polytope, abs_tol: float = 1e-6):
