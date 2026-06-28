@@ -177,11 +177,28 @@ def track_widths(experiment_path: Path | str, eval_net: appmax.evaluation.Evalua
     pd.DataFrame(data).to_csv(experiment_path / 'data.csv')
 
 
-def track_union(experiment_path: Path | str, eval_net: appmax.evaluation.EvaluationNet, original_net: torch.nn.Module, samples_initial: list[torch.Tensor], num_samples: int):
-    for sample in samples_initial:
+def track_union(
+    experiment_path: Path | str,
+    eval_net: appmax.evaluation.EvaluationNet,
+    original_net: torch.nn.Module,
+    samples_initial: list[torch.Tensor],
+    num_samples: int
+):
+    experiment_path = Path(experiment_path)
+    experiment_path.mkdir(parents=True, exist_ok=True)
+    assert eval_net.metadata.bounds is not None
+    data = []
+
+    for i, sample in enumerate(logger.progress(samples_initial, main=True)):
         lp = appmax.optimization.lp_from_net(eval_net, eval_net.metadata.bounds, sample)
         opt_result_initial = appmax.solving.solve(lp)
         tracking_list = [(1, opt_result_initial)]
-        appmax.optimization.analyze_union(eval_net, original_net, sample, lp, opt_result_initial, num_samples=50, tracking_list=tracking_list)
-        # TODO: find running maximum of the tracking list & store the results
-        ...
+        maximum = opt_result_initial.fun
+        appmax.optimization.analyze_union(eval_net, original_net, sample, lp,
+                                          opt_result_initial, num_samples=num_samples, tracking_list=tracking_list)
+
+        for j, (polytopes, result) in enumerate(tracking_list):
+            maximum = max(maximum, result.fun)
+            data.append({'sample': i, 'point': j, 'polytopes': polytopes, 'fun': result.fun, 'max': maximum})
+
+    pd.DataFrame(data).to_csv(experiment_path / 'data.csv')

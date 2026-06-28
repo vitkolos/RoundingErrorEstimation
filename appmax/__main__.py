@@ -41,14 +41,14 @@ def main(dataset, run_id, metrics, bits, solver, num_samples, jobs):
     model_approx.round(bits=bits)
 
     eval_net = appmax.evaluation.EvaluationNet(model, model_approx, data_split.metadata).eval()
-    samples = appmax.experiment.get_samples(model.subset(data_split.test), num_samples)
+    # samples = appmax.experiment.get_samples(model.subset(data_split.test), num_samples)
 
-    with appmax.solving.solver_config(solver):
-        results = appmax.experiment.single(eval_net, model.layers, samples[1], metrics, debug=True)
-        print(results)
+    # with appmax.solving.solver_config(solver):
+    #     results = appmax.experiment.single(eval_net, model.layers, samples[1], metrics, debug=True)
+    #     print(results)
 
-    lp = appmax.optimization.lp_from_net(eval_net, eval_net.metadata.bounds, samples[1])
-    print(lp.b_ub.shape[0], 'constraints')
+    # lp = appmax.optimization.lp_from_net(eval_net, eval_net.metadata.bounds, samples[1])
+    # print(lp.b_ub.shape[0], 'constraints')
 
     print('rmse', model.quality('rmse', data_split.test, data_split.metadata.error_scaling))
     print('rmse approx', model_approx.quality('rmse', data_split.test, data_split.metadata.error_scaling))
@@ -58,7 +58,9 @@ def main(dataset, run_id, metrics, bits, solver, num_samples, jobs):
     # with joblib.parallel_config(backend='loky', n_jobs=jobs), appmax.solving.solver_config(solver):
     #     appmax.experiment.run(f'experiments/{dataset}', run_id, eval_net, model.layers, samples, metrics)
 
+    # samples_dev = appmax.experiment.get_samples(data_split.dev, num_samples)
     # appmax.experiment.track_widths(f'experiments/{dataset}/widths', eval_net, samples_dev, num_directions=300)
+    # appmax.experiment.track_union(f'experiments/{dataset}/union', eval_net, model.layers, samples_dev, num_samples=300)
 
 
 if __name__ == '__main__':
