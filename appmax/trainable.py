@@ -2,6 +2,7 @@ import sys
 from dataclasses import dataclass
 from typing import Any
 
+import click
 import numpy as np
 import torch
 from torch import nn
@@ -10,6 +11,25 @@ import torchmetrics
 
 import appmax.logger
 import appmax.quantization
+
+
+@click.command()
+@click.argument('dataset')
+def main(dataset):
+    import appmax.applications
+    torch.manual_seed(42)
+
+    bundle = appmax.applications.DataBundle(dataset)
+    data_split = bundle.data_split
+    model = bundle.model_class()
+
+    device = torch.accelerator.current_accelerator().type if torch.accelerator.is_available() else 'cpu'
+    print('accelerator', device)
+    model.to(device)
+
+    model.fit(data_split.train, data_split.dev)
+    model.cpu()
+    model.save(bundle.model_file)
 
 
 class Bounds:
@@ -185,6 +205,7 @@ class TrainableModel(BaseModel):
         return loss, metric
 
     def subset(self, dataset: Dataset) -> Dataset:
+        """creates a subset of the dataset containing only items where the model is accurate enough"""
         predictions = []
         loader = torch.utils.data.DataLoader(dataset, batch_size=self.batch_size)
 
@@ -211,3 +232,7 @@ def init_weights(module: nn.Module):
         nn.init.kaiming_uniform_(module.weight, nonlinearity='relu')
         if module.bias is not None:
             nn.init.constant_(module.bias, 0)
+
+
+if __name__ == '__main__':
+    main()

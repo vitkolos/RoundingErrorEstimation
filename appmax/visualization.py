@@ -2,6 +2,7 @@ from pathlib import Path
 import typing
 import re
 
+import click
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -9,6 +10,58 @@ from matplotlib.backends.backend_pdf import PdfPages
 
 import appmax.experiment
 import appmax.logger
+import appmax.applications
+
+
+SEED = 42
+rng = np.random.default_rng(SEED)
+
+
+@click.command()
+@click.argument('visualization')
+@click.argument('dataset')
+@click.argument('run-id', default='run')
+def main(visualization, dataset, run_id):
+    bundle = appmax.applications.DataBundle(dataset)
+    aliases = {'run': 'asym8', 'second': 'asym4'}
+
+    match visualization.lower():
+        case 'widths':
+            plot_tracked_widths({'california': f'experiments/california/widths', 'year': f'experiments/year/widths'})
+
+        case 'histograms':
+            plot_results(f'experiments/{dataset}', run_id)
+
+        case 'comparison':
+            with open('experiments/comparison.html', 'w') as f:
+                items = [
+                    ('experiments/california', ['run', 'sym8']),
+                    ('experiments/california', ['second', 'sym4']),
+                    ('experiments/year', ['run', 'sym8']),
+                    ('experiments/year', ['second', 'sym4']),
+                ]
+                tables = [compare_results(*item, aliases) for item in items]
+                f.write(tables_to_html(tables))
+
+        case 'points':
+            indices = sorted(rng.permutation(1000)[:20].tolist())
+            datasets = [
+                ('experiments/california', appmax.applications.california_housing.CaliforniaHousingSplit().metadata.error_scaling),
+                ('experiments/year', appmax.applications.year_prediction.YearPredictionSplit().metadata.error_scaling),
+            ]
+            runs = ('run', 'sym8', 'second', 'sym4')
+
+            with open('experiments/points.html', 'w') as f:
+                tables = [list_points(d, r, 1.0, indices, aliases) for d, _ in datasets for r in runs]
+                f.write(tables_to_html(tables, into_one=False))
+
+            with open('experiments/points_unscaled.html', 'w') as f:
+                tables = [list_points(d, r, s, indices, aliases) for d, s in datasets for r in runs]
+                f.write(tables_to_html(tables, into_one=False))
+
+        case 'cardinalities':
+            # evaluate_subsets(f'experiments/{dataset}', run_id, bundle.data_split.metadata.error_scaling)
+            plot_subsets(f'experiments/{dataset}', run_id)
 
 
 def plot_results(experiment_path: Path | str, run_id: str):
@@ -193,14 +246,12 @@ COL_SIZE = ('size', 'exact')
 
 
 def evaluate_subsets(experiment_path: Path | str, run_id: str, error_scaling: float):
-    SEED = 42
     NUM_SUBSETS = 100
     STEP = 50
     START = STEP
     experiment_path = Path(experiment_path)
     df_results = pd.read_csv(experiment_path / f'{run_id}_results.csv', index_col=0)
     df_results.loc[:, appmax.experiment.UNSCALED_COLS] *= error_scaling
-    rng = np.random.default_rng(SEED)
     stats_for_sizes = []
 
     for size in appmax.logger.progress(range(START, len(df_results), STEP)):
@@ -254,3 +305,7 @@ def plot_subsets(experiment_path: Path | str, run_id: str):
             ax.set_ylabel(r'metric ($\mu\pm\sigma$)')
             pdf.savefig()
             plt.close()
+
+
+if __name__ == '__main__':
+    main()
