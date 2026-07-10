@@ -27,7 +27,7 @@ def get_samples(dataset: appmax.trainable.Dataset, first_k: int | None = None) -
     return [dataset[i][0].clone() for i in range(total_length)]
 
 
-def run(
+def run_parallel(
     experiment_path: Path | str,
     run_id: str,
     eval_net: appmax.evaluation.EvaluationNet,
@@ -195,7 +195,8 @@ def track_union(
         tracking_list = [(1, opt_result_initial)]
         maximum = opt_result_initial.fun
         appmax.optimization.analyze_union(eval_net, original_net, sample, lp,
-                                          opt_result_initial, num_samples=num_samples, tracking_list=tracking_list)
+                                          opt_result_initial, num_samples=num_samples,
+                                          compute_width=False, tracking_list=tracking_list)
 
         for j, (polytopes, result) in enumerate(tracking_list):
             maximum = max(maximum, result.fun)

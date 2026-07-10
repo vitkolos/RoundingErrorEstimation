@@ -127,11 +127,15 @@ def analyze_union(
     lp_initial: LinearProgram,
     opt_result_initial: OptimizationResult,
     num_samples: int = 50,
+    compute_width: bool = True,
     tracking_list: list | None = None
 ) -> PolytopeResult:
     union_lp = lp_from_net(original_net, eval_net.metadata.bounds, sample_initial)
     union_result = PolytopeResult()
-    union_result.width = polytope_widths(union_lp).mean().item()
+
+    if compute_width:
+        union_result.width = polytope_widths(union_lp).mean().item()
+
     union = {lp_initial.to_polytope_hashable(): opt_result_initial}
     union_extend(union, eval_net, samples_in_polytope(union_lp, sample_initial, num_samples), tracking_list)
     union_result.x, union_result.fun = max(union.values(), key=lambda result: result.fun)

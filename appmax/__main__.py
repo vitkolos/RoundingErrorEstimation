@@ -17,6 +17,7 @@ def metrics_callback(ctx, param, value):
 
 
 @click.command()
+@click.argument('experiment')
 @click.argument('dataset')
 @click.argument('run-id', default='run')
 @click.option('-m', '--metrics', type=click.Choice(appmax.optimization.Metrics, case_sensitive=False), multiple=True, default=appmax.optimization.Metrics.MAXIMUM, callback=metrics_callback)
@@ -24,7 +25,7 @@ def metrics_callback(ctx, param, value):
 @click.option('-s', '--solver', default='')
 @click.option('-n', '--num_samples', default=-1)
 @click.option('-j', '--jobs', default=1)
-def main(dataset, run_id, metrics, bits, solver, num_samples, jobs):
+def main(experiment, dataset, run_id, metrics, bits, solver, num_samples, jobs):
     """
     AppMax \n
     input: evaluation network (original net. & approximated net. combined), data samples \n
@@ -41,26 +42,35 @@ def main(dataset, run_id, metrics, bits, solver, num_samples, jobs):
     model_approx.round(bits=bits)
 
     eval_net = appmax.evaluation.EvaluationNet(model, model_approx, data_split.metadata).eval()
-    # samples = appmax.experiment.get_samples(model.subset(data_split.test), num_samples)
 
-    # with appmax.solving.solver_config(solver):
-    #     results = appmax.experiment.single(eval_net, model.layers, samples[1], metrics, debug=True)
-    #     print(results)
+    with joblib.parallel_config(backend='loky', n_jobs=jobs), appmax.solving.solver_config(solver):
+        match experiment:
+            case 'quality':
+                print('rmse', model.quality('rmse', data_split.test, data_split.metadata.error_scaling))
+                print('rmse approx', model_approx.quality('rmse', data_split.test, data_split.metadata.error_scaling))
+                print('mae', model.quality('mae', data_split.test, data_split.metadata.error_scaling))
+                print('mae approx', model_approx.quality('mae', data_split.test, data_split.metadata.error_scaling))
 
-    # lp = appmax.optimization.lp_from_net(eval_net, eval_net.metadata.bounds, samples[1])
-    # print(lp.b_ub.shape[0], 'constraints')
+            case 'widths' | 'union':
+                samples_dev = appmax.experiment.get_samples(model.subset(data_split.dev), num_samples)
 
-    print('rmse', model.quality('rmse', data_split.test, data_split.metadata.error_scaling))
-    print('rmse approx', model_approx.quality('rmse', data_split.test, data_split.metadata.error_scaling))
-    print('mae', model.quality('mae', data_split.test, data_split.metadata.error_scaling))
-    print('mae approx', model_approx.quality('mae', data_split.test, data_split.metadata.error_scaling))
+                if experiment == 'widths':
+                    appmax.experiment.track_widths(
+                        f'experiments/{dataset}/widths', eval_net, samples_dev, num_directions=300)
+                else:
+                    appmax.experiment.track_union(
+                        f'experiments/{dataset}/union', eval_net, model.layers, samples_dev, num_samples=150)
 
-    # with joblib.parallel_config(backend='loky', n_jobs=jobs), appmax.solving.solver_config(solver):
-    #     appmax.experiment.run(f'experiments/{dataset}', run_id, eval_net, model.layers, samples, metrics)
+            case 'single' | 'parallel':
+                samples_test = appmax.experiment.get_samples(model.subset(data_split.test), num_samples)
 
-    # samples_dev = appmax.experiment.get_samples(data_split.dev, num_samples)
-    # appmax.experiment.track_widths(f'experiments/{dataset}/widths', eval_net, samples_dev, num_directions=300)
-    # appmax.experiment.track_union(f'experiments/{dataset}/union', eval_net, model.layers, samples_dev, num_samples=300)
+                if experiment == 'single':
+                    results = appmax.experiment.single(
+                        eval_net, model.layers, samples_test[1], metrics, debug=True)
+                    print(results)
+                else:
+                    appmax.experiment.run_parallel(
+                        f'experiments/{dataset}', run_id, eval_net, model.layers, samples_test, metrics)
 
 
 if __name__ == '__main__':

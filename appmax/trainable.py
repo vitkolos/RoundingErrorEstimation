@@ -218,7 +218,7 @@ class TrainableModel(BaseModel):
                 predictions.append(self(X))
 
         predictions = torch.cat(predictions)
-        targets = dataset.target
+        targets = dataset[:][1]
         accurate_enough = (targets - predictions).abs() < 1.0
         accurate_count = accurate_enough.sum()
         indices = torch.nonzero(accurate_enough, as_tuple=True)[0].tolist()

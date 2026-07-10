@@ -29,6 +29,9 @@ def main(visualization, dataset, run_id):
         case 'widths':
             plot_tracked_widths({'california': f'experiments/california/widths', 'year': f'experiments/year/widths'})
 
+        case 'union':
+            plot_tracked_union(f'experiments/{dataset}/union')
+
         case 'histograms':
             plot_results(f'experiments/{dataset}', run_id)
 
@@ -240,6 +243,37 @@ def plot_tracked_widths(experiments: dict[str, str]):
     for type_ in types:
         for sample in range(first_k):
             plot_charts('different', f'{type_}_{sample+1:02d}', [(e, (sample, type_), e) for e in experiments.keys()])
+
+
+def plot_tracked_union(experiment_path: Path | str):
+    experiment_path = Path(experiment_path)
+    data = pd.read_csv(experiment_path / 'data.csv', index_col=0)
+    grouped = data.groupby('sample')
+
+    def plot_chart(category, sample):
+        group_data = grouped.get_group(sample)
+        fig, ax1 = plt.subplots()
+        ax2 = ax1.twinx()
+        ax1.plot(group_data['point'], group_data['fun'], '.', label='function value')
+        ax1.plot(group_data['point'], group_data['max'], label='maximum')
+        ax2.plot(group_data['point'], group_data['polytopes'], color='red', label='found polytopes')
+        ax2.set_ylim(0, 50)
+
+        line = {'c': 'black', 'ls': 'dotted'}
+        ax1.axvline(25, **line)
+        ax1.axvline(50, **line, lw=2)
+        ax1.axvline(75, **line)
+        ax1.axvline(100, **line)
+
+        category_path = experiment_path / category
+        category_path.mkdir(parents=True, exist_ok=True)
+        ax1.legend(loc='center left')
+        ax2.legend(loc='center right')
+        plt.savefig(category_path / f'{sample+1:02d}.png')
+        plt.close()
+
+    for sample in grouped.groups.keys():
+        plot_chart('single', sample)
 
 
 COL_SIZE = ('size', 'exact')
