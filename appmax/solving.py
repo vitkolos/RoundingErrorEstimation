@@ -62,6 +62,10 @@ def solver_config(solver_name: str):
         _active_solver.reset(token)
 
 
+def init_worker(solver_name: str):
+    _active_solver.set(solver_name)
+
+
 def get_min_max_lps(lp: LinearProgram, objective: torch.Tensor) -> tuple[LinearProgram, LinearProgram]:
     lp_min = dataclasses.replace(lp, objective=objective, maximize=False)
     lp_max = dataclasses.replace(lp, objective=objective, maximize=True)

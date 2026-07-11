@@ -53,9 +53,10 @@ def run_parallel(
         memory = joblib.Memory(experiment_path / 'memory', verbose=0)
         wrapped_step = memory.cache(wrapped_step, ignore=['eval_net', 'original_net', 'input_sample'])
 
-    # setup generators
+    # setup generators & ensure correct solver
     wrapped_step = joblib.delayed(wrapped_step)
-    with joblib.Parallel(return_as='generator_unordered') as para:
+    init_kwargs = {'initializer': appmax.solving.init_worker, 'initargs': (appmax.solving._active_solver.get(),)}
+    with joblib.Parallel(return_as='generator_unordered', **init_kwargs) as para:
         results_gen = para(wrapped_step(run_id, i, metrics, eval_net, original_net, sample)
                            for i, sample in samples)
         progress_gen = logger.progress(results_gen, total=len(samples), smoothing=0, main=True)
