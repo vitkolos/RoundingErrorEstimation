@@ -20,11 +20,11 @@ def metrics_callback(ctx, param, value):
 @click.argument('experiment')
 @click.argument('dataset')
 @click.argument('run-id', default='run')
-@click.option('-m', '--metrics', type=click.Choice(appmax.optimization.Metrics, case_sensitive=False), multiple=True, default=appmax.optimization.Metrics.MAXIMUM, callback=metrics_callback)
-@click.option('-b', '--bits', default=8)
-@click.option('-s', '--solver', default='')
-@click.option('-n', '--num_samples', default=-1)
-@click.option('-j', '--jobs', default=1)
+@click.option('-m', '--metrics', type=click.Choice(appmax.optimization.Metrics, case_sensitive=False), multiple=True, default=appmax.optimization.METRICS_ALL, callback=metrics_callback)
+@click.option('-b', '--bits', default=8, help='Number of bits used by the quantized network (default: 8).')
+@click.option('-s', '--solver', default='', help='Best options: gurobi, gurobi-barrier, highs (default).')
+@click.option('-n', '--num_samples', default='', help='Usage: 3 (samples 0, 1, 2), 5:8 (samples 5, 6, 7); all the samples if left empty.')
+@click.option('-j', '--jobs', default=1, help='Number of CPUs used (default: 1).')
 def main(experiment, dataset, run_id, metrics, bits, solver, num_samples, jobs):
     """
     AppMax \n
@@ -66,7 +66,7 @@ def main(experiment, dataset, run_id, metrics, bits, solver, num_samples, jobs):
 
                 if experiment == 'single':
                     results = appmax.experiment.single(
-                        eval_net, model.layers, samples_test[1], metrics, debug=True)
+                        eval_net, model.layers, samples_test[1][1], metrics, debug=True)
                     print(results)
                 else:
                     appmax.experiment.run_parallel(

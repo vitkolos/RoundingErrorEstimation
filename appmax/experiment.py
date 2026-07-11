@@ -17,14 +17,18 @@ RESULT_COLS = ERROR_COLS + ['polytope_width', 'integral', 'union_width', 'time']
 UNSCALED_COLS = ERROR_COLS + ['integral']
 
 
-def get_samples(dataset: appmax.trainable.Dataset, first_k: int | None = None) -> list[torch.Tensor]:
-    total_length = len(dataset)  # type: ignore
+def get_samples(dataset: appmax.trainable.Dataset, num_samples: str = '') -> list[tuple[int, torch.Tensor]]:
+    start, stop = 0, len(dataset)  # type: ignore
 
-    if first_k is not None and first_k > 0:
-        total_length = min(total_length, first_k)
+    if ':' in num_samples:
+        s, num_samples = num_samples.split(':', 2)
+        start = max(start, int(s))
+
+    if num_samples:
+        stop = min(stop, int(num_samples))
 
     # clone to break connection with Storage
-    return [dataset[i][0].clone() for i in range(total_length)]
+    return [(i, dataset[i][0].clone()) for i in range(start, stop)]
 
 
 def run_parallel(
@@ -32,7 +36,7 @@ def run_parallel(
     run_id: str,
     eval_net: appmax.evaluation.EvaluationNet,
     original_net: torch.nn.Module,
-    samples: list[torch.Tensor],
+    samples: list[tuple[int, torch.Tensor]],
     metrics: appmax.optimization.Metrics,
     use_memory: bool = True,
     show_tensors: bool = False
@@ -41,7 +45,7 @@ def run_parallel(
     experiment_path = Path(experiment_path)
     experiment_path.mkdir(parents=True, exist_ok=True)
     with (experiment_path / '_runs.txt').open('a') as f:
-        print(run_id, len(samples), eval_net.metadata.error_scaling, sep='\t', file=f)
+        print(run_id, f'{samples[0][0]}:{samples[-1][0]+1}', eval_net.metadata.error_scaling, sep='\t', file=f)
 
     # activate memory (optional)
     wrapped_step = step
@@ -53,11 +57,18 @@ def run_parallel(
     wrapped_step = joblib.delayed(wrapped_step)
     with joblib.Parallel(return_as='generator_unordered') as para:
         results_gen = para(wrapped_step(run_id, i, metrics, eval_net, original_net, sample)
-                           for i, sample in enumerate(samples))
+                           for i, sample in samples)
         progress_gen = logger.progress(results_gen, total=len(samples), smoothing=0, main=True)
 
-        # run & process output
-        df = pd.DataFrame(progress_gen)
+        # run & save output
+        rows = []
+        for row in progress_gen:
+            df_running = pd.DataFrame([row]).set_index('sample_index')[RESULT_COLS]
+            df_running.to_csv(experiment_path / f'{run_id}_running.csv', mode='a', header=not rows)
+            rows.append(row)
+
+    # process output
+    df = pd.DataFrame(rows)
     df = df.set_index('sample_index').sort_index()
     df_results = df[RESULT_COLS]
     df_results.to_csv(experiment_path / f'{run_id}_results.csv')
@@ -157,7 +168,7 @@ def single(
     }
 
 
-def track_widths(experiment_path: Path | str, eval_net: appmax.evaluation.EvaluationNet, samples: list[torch.Tensor], num_directions: int):
+def track_widths(experiment_path: Path | str, eval_net: appmax.evaluation.EvaluationNet, samples: list[tuple[int, torch.Tensor]], num_directions: int):
     experiment_path = Path(experiment_path)
     experiment_path.mkdir(parents=True, exist_ok=True)
     assert eval_net.metadata.bounds is not None
@@ -166,7 +177,7 @@ def track_widths(experiment_path: Path | str, eval_net: appmax.evaluation.Evalua
     def extend_data(i: int, type_: str, widths: torch.Tensor):
         data.extend([{'sample': i, 'type': type_, 'directions': d+1, 'width': w.item()} for d, w in enumerate(widths)])
 
-    for i, sample in enumerate(logger.progress(samples, main=True)):
+    for i, sample in logger.progress(samples, main=True):
         lp = appmax.optimization.lp_from_net(eval_net, eval_net.metadata.bounds, sample)
         polytope_widths = appmax.optimization.polytope_widths(lp, num_directions, cummulative_avg=True)
         extend_data(i, 'polytope', polytope_widths)
@@ -181,7 +192,7 @@ def track_union(
     experiment_path: Path | str,
     eval_net: appmax.evaluation.EvaluationNet,
     original_net: torch.nn.Module,
-    samples_initial: list[torch.Tensor],
+    samples_initial: list[tuple[int, torch.Tensor]],
     num_samples: int
 ):
     experiment_path = Path(experiment_path)
@@ -189,7 +200,7 @@ def track_union(
     assert eval_net.metadata.bounds is not None
     data = []
 
-    for i, sample in enumerate(logger.progress(samples_initial, main=True)):
+    for i, sample in logger.progress(samples_initial, main=True):
         lp = appmax.optimization.lp_from_net(eval_net, eval_net.metadata.bounds, sample)
         opt_result_initial = appmax.solving.solve(lp)
         tracking_list = [(1, opt_result_initial)]

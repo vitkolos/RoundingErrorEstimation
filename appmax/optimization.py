@@ -20,6 +20,9 @@ class Metrics(enum.Flag):
     UNION = enum.auto()
 
 
+METRICS_ALL = Metrics.MAXIMUM | Metrics.WIDTH | Metrics.INTEGRAL | Metrics.UNION
+
+
 @dataclass
 class PolytopeResult:
     x: torch.Tensor | None = None  # point where the error function reaches its maximum
