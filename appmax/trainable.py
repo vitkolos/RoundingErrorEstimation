@@ -223,7 +223,7 @@ class TrainableModel(BaseModel):
         accurate_count = accurate_enough.sum()
         indices = torch.nonzero(accurate_enough, as_tuple=True)[0].tolist()
         print(
-            f'subset contains only {accurate_count} data points ({len(dataset)-accurate_count} removed, model was too inaccurate)')
+            f'subset contains only {accurate_count} data points ({len(dataset)-accurate_count} removed, model was too inaccurate)', file=sys.stderr)
         return torch.utils.data.Subset(dataset, indices)
 
 
