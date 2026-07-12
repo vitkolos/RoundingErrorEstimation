@@ -1,5 +1,5 @@
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 import click
@@ -48,8 +48,8 @@ class Metadata:
     bounds: Bounds | None = None
     scaler: Any = None
     error_scaling: float = 1.0
-    sl_data: slice = slice(1, None)
-    sl_target: slice = slice(0, 1)
+    sl_data: slice = field(default_factory=lambda: slice(1, None))
+    sl_target: slice = field(default_factory=lambda: slice(0, 1))
 
     def fit_bounds(self, data_full: np.ndarray, padding: float = 0.05):
         data = data_full[:, self.sl_data]
