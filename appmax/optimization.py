@@ -12,6 +12,9 @@ import appmax.logger
 from appmax.solving import Polytope, LinearProgram, PolytopeHashable, OptimizationResult
 from appmax.trainable import Bounds
 
+NUM_DIRECTIONS_DEFAULT = 100
+NUM_MCMC_POINTS_DEFAULT = 50
+
 
 class Metrics(enum.Flag):
     MAXIMUM = enum.auto()
@@ -111,7 +114,7 @@ def prepare_integral(lp: LinearProgram) -> Polytope:
     return Polytope(bounds, A_ub, b_ub)
 
 
-def polytope_widths(polytope: Polytope, num_directions: int = 100, cummulative_avg: bool = False) -> torch.Tensor:
+def polytope_widths(polytope: Polytope, num_directions: int = NUM_DIRECTIONS_DEFAULT, cummulative_avg: bool = False) -> torch.Tensor:
     """returns widths of the polytope computed from many random directions (or the cummulative average in each step)"""
     # variables == dimensions
     num_variables = polytope.A_ub.shape[1]
@@ -129,7 +132,7 @@ def analyze_union(
     sample_initial: torch.Tensor,
     lp_initial: LinearProgram,
     opt_result_initial: OptimizationResult,
-    num_samples: int = 50,
+    num_points: int = NUM_MCMC_POINTS_DEFAULT,
     compute_width: bool = True,
     tracking_list: list | None = None
 ) -> PolytopeResult:
@@ -140,16 +143,16 @@ def analyze_union(
         union_result.width = polytope_widths(union_lp).mean().item()
 
     union = {lp_initial.to_polytope_hashable(): opt_result_initial}
-    union_extend(union, eval_net, samples_in_polytope(union_lp, sample_initial, num_samples), tracking_list)
+    union_extend(union, eval_net, samples_in_polytope(union_lp, sample_initial, num_points), tracking_list)
     union_result.x, union_result.fun = max(union.values(), key=lambda result: result.fun)
     union_result.x = union_result.x.reshape_as(sample_initial)
     return union_result
 
 
-def samples_in_polytope(polytope: Polytope, sample_initial: torch.Tensor, num_samples: int, seed: int = 42):
+def samples_in_polytope(polytope: Polytope, sample_initial: torch.Tensor, num_points: int, seed: int = 42):
     walker = polytopewalk.dense.HitAndRun()
     samples = walker.generateCompleteWalk(
-        niter=num_samples,
+        niter=num_points,
         init=sample_initial.flatten(),
         A=polytope.A_ub,
         b=polytope.b_ub,
