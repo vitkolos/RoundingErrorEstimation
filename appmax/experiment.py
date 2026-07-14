@@ -13,7 +13,7 @@ import appmax.solving
 import appmax.logger as logger
 
 ERROR_COLS = ['error_sample', 'error_nearby', 'union_error']
-RESULT_COLS = ERROR_COLS + ['polytope_width', 'integral', 'union_width', 'time']
+RESULT_COLS = ERROR_COLS + ['polytope_width', 'integral', 'union_width', 'union_polytopes', 'time']
 UNSCALED_COLS = ERROR_COLS + ['integral']
 
 
@@ -166,6 +166,7 @@ def single(
         'union_input': result.union.x if result.union else None,
         'union_error': result.union.fun if result.union else None,
         'union_width': result.union.width if result.union else None,
+        'union_polytopes': result.union.polytopes if result.union else None,
     }
 
 

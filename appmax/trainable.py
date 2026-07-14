@@ -42,6 +42,9 @@ class Bounds:
             self.lb = np.array([lb if lb is not None else float('-inf') for lb, _ in bounds])
             self.ub = np.array([ub if ub is not None else float('inf') for _, ub in bounds])
 
+    def __len__(self):
+        return len(self.seq)
+
 
 @dataclass
 class Metadata:

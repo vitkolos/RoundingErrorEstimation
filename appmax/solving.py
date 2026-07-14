@@ -4,6 +4,7 @@ from contextvars import ContextVar
 from contextlib import contextmanager
 
 import torch
+import numpy as np
 import scipy.optimize
 import gurobipy
 
@@ -19,6 +20,25 @@ class Polytope:
 
     def to_polytope_hashable(self) -> 'PolytopeHashable':
         return PolytopeHashable(self.A_ub, self.b_ub)
+
+    def get_full_constraints(self) -> tuple[np.ndarray, np.ndarray]:
+        I = np.eye(len(self.bounds))
+        A_matrices = [self.A_ub.numpy()]
+        b_vectors = [self.b_ub.numpy()]
+
+        valid_lb = np.isfinite(self.bounds.lb)
+        if np.any(valid_lb):
+            A_matrices.append(-I[valid_lb])
+            b_vectors.append(-self.bounds.lb[valid_lb])
+
+        valid_ub = np.isfinite(self.bounds.ub)
+        if np.any(valid_ub):
+            A_matrices.append(I[valid_ub])
+            b_vectors.append(self.bounds.ub[valid_ub])
+
+        A_full = np.vstack(A_matrices)
+        b_full = np.concatenate(b_vectors)
+        return A_full, b_full
 
 
 @dataclasses.dataclass

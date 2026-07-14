@@ -3,6 +3,7 @@ from dataclasses import dataclass
 import enum
 
 import torch
+import numpy as np
 import polytopewalk
 
 import appmax.neurons
@@ -12,8 +13,9 @@ import appmax.logger
 from appmax.solving import Polytope, LinearProgram, PolytopeHashable, OptimizationResult
 from appmax.trainable import Bounds
 
-NUM_DIRECTIONS_DEFAULT = 100
-NUM_MCMC_POINTS_DEFAULT = 50
+NUM_DIRECTIONS = 100
+MCMC_NUM_POINTS = 150
+MCMC_MAX_POLYTOPES = 40
 
 
 class Metrics(enum.Flag):
@@ -33,6 +35,7 @@ class PolytopeResult:
     width: float | None = None  # polytope mean width
     integral: float | None = None  # mean width of the extended polytope
     union: PolytopeResult | None = None  # features of the larger polytope (taken from the original network)
+    polytopes: int | None = None  # number of checked polytopes (used only as union.polytopes)
 
 
 def analyze_linear_region(
@@ -114,7 +117,7 @@ def prepare_integral(lp: LinearProgram) -> Polytope:
     return Polytope(bounds, A_ub, b_ub)
 
 
-def polytope_widths(polytope: Polytope, num_directions: int = NUM_DIRECTIONS_DEFAULT, cummulative_avg: bool = False) -> torch.Tensor:
+def polytope_widths(polytope: Polytope, num_directions: int = NUM_DIRECTIONS, cummulative_avg: bool = False) -> torch.Tensor:
     """returns widths of the polytope computed from many random directions (or the cummulative average in each step)"""
     # variables == dimensions
     num_variables = polytope.A_ub.shape[1]
@@ -132,7 +135,8 @@ def analyze_union(
     sample_initial: torch.Tensor,
     lp_initial: LinearProgram,
     opt_result_initial: OptimizationResult,
-    num_points: int = NUM_MCMC_POINTS_DEFAULT,
+    num_points: int = MCMC_NUM_POINTS,
+    max_polytopes: int = MCMC_MAX_POLYTOPES,
     compute_width: bool = True,
     tracking_list: list | None = None
 ) -> PolytopeResult:
@@ -143,32 +147,51 @@ def analyze_union(
         union_result.width = polytope_widths(union_lp).mean().item()
 
     union = {lp_initial.to_polytope_hashable(): opt_result_initial}
-    union_extend(union, eval_net, samples_in_polytope(union_lp, sample_initial, num_points), tracking_list)
+    samples = samples_in_polytope(union_lp, sample_initial, num_points)
+    union_extend(union, eval_net, samples, max_polytopes, tracking_list)
     union_result.x, union_result.fun = max(union.values(), key=lambda result: result.fun)
     union_result.x = union_result.x.reshape_as(sample_initial)
+    union_result.polytopes = len(union)
     return union_result
 
 
-def samples_in_polytope(polytope: Polytope, sample_initial: torch.Tensor, num_points: int, seed: int = 42):
-    walker = polytopewalk.dense.HitAndRun()
-    samples = walker.generateCompleteWalk(
-        niter=num_points,
-        init=sample_initial.flatten(),
-        A=polytope.A_ub,
-        b=polytope.b_ub,
-        burnin=0,  # discard the first few samples
-        thin=1,  # only keep every n-th sample to reduce correlation
-        seed=seed,
-    )
-    samples_tensor = torch.from_numpy(samples).to(dtype=torch.get_default_dtype())
-    samples_tensor = samples_tensor.reshape(-1, *sample_initial.shape)
+def samples_in_polytope(polytope: Polytope, sample_initial: torch.Tensor, num_points: int, seed: int = 42) -> torch.Tensor:
+    A_full, b_full = polytope.get_full_constraints()
+    safe_init = move_point_inside(sample_initial.flatten().numpy(), A_full, b_full)
+
+    if safe_init is not None:
+        walker = polytopewalk.dense.HitAndRun()
+        samples = walker.generateCompleteWalk(
+            niter=num_points,
+            init=safe_init,
+            A=A_full,
+            b=b_full,
+            burnin=0,  # discard the first few samples
+            thin=1,  # only keep every n-th sample to reduce correlation
+            seed=seed,
+        )
+        samples_tensor = torch.from_numpy(samples).to(dtype=torch.get_default_dtype())
+        samples_tensor = samples_tensor.reshape(-1, *sample_initial.shape)
+    else:
+        samples_tensor = torch.empty(0, *sample_initial.shape)
+
     return samples_tensor
+
+
+def move_point_inside(point_initial: np.ndarray, A_full: np.ndarray, b_full: np.ndarray) -> np.ndarray | None:
+    if (A_full @ point_initial <= b_full).all():
+        return point_initial
+
+    # TODO: try to move the point inside the polytope
+
+    return None
 
 
 def union_extend(
     union: dict[PolytopeHashable, PolytopeResult],
     eval_net: appmax.evaluation.EvaluationNet,
     samples: torch.Tensor,
+    max_polytopes: int,
     tracking_list: list | None = None
 ):
     for sample in appmax.logger.progress(samples):
@@ -182,6 +205,9 @@ def union_extend(
 
         if tracking_list is not None:
             tracking_list.append((len(union), union[h]))
+
+        if len(union) >= max_polytopes:
+            break
 
 
 def check_feasibility(sample: torch.Tensor, polytope: Polytope, abs_tol: float = 1e-6):
