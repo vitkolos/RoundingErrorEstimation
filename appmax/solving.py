@@ -48,17 +48,23 @@ class LinearProgram(Polytope):
     maximize: bool = True
 
 
-@dataclasses.dataclass
 class PolytopeHashable:
-    A_ub: torch.Tensor
-    b_ub: torch.Tensor
+    def __init__(self, A_ub: torch.Tensor, b_ub: torch.Tensor):
+        # hash_tensor reduces the whole tensor using XOR, there may be frequent collisions
+        self.hash = hash((A_ub.hash_tensor().item(), b_ub.hash_tensor().item()))
+        self.A_sparse = A_ub.to_sparse()  # coalesced sparse COO tensor
+        self.b = b_ub
 
     def __eq__(self, other):
-        return type(other) is PolytopeHashable and torch.equal(self.A_ub, other.A_ub) and torch.equal(self.b_ub, other.b_ub)
+        return (
+            type(other) is PolytopeHashable
+            and torch.equal(self.b, other.b)
+            and torch.equal(self.A_sparse.indices(), other.A_sparse.indices())
+            and torch.equal(self.A_sparse.values(), other.A_sparse.values())
+        )
 
     def __hash__(self):
-        # hash_tensor reduces the whole tensor using XOR, there may be frequent collisions
-        return hash((self.A_ub.hash_tensor().item(), self.b_ub.hash_tensor().item()))
+        return self.hash
 
 
 class OptimizationResult(NamedTuple):
