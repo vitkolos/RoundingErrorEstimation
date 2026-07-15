@@ -1,6 +1,7 @@
 from __future__ import annotations
 from dataclasses import dataclass
 import enum
+import sys
 
 import torch
 import numpy as np
@@ -179,10 +180,27 @@ def samples_in_polytope(polytope: Polytope, sample_initial: torch.Tensor, num_po
 
 
 def move_point_inside(point_initial: np.ndarray, A_full: np.ndarray, b_full: np.ndarray) -> np.ndarray | None:
+    """the point may be outside the polytope due to rounding errors"""
     if (A_full @ point_initial <= b_full).all():
         return point_initial
 
-    # TODO: try to move the point inside the polytope
+    # find the Chebyshev center
+    # see https://en.wikipedia.org/w/index.php?title=Chebyshev_center&oldid=1340455583#Linear_programming_problem
+    try:
+        A_pt, b_pt = torch.from_numpy(A_full), torch.from_numpy(b_full)
+        num_vars = point_initial.size
+        bounds = Bounds([(None, None)] * (num_vars + 1))
+        row_norms = torch.linalg.vector_norm(A_pt, dim=1, keepdim=True)
+        A_ex = torch.hstack([A_pt, row_norms])
+        objective = torch.tensor([0.0] * num_vars + [1.0])
+        lp = LinearProgram(bounds, A_ex, b_pt, objective)
+        result = appmax.solving.solve(lp)
+        point_new = result.x[:-1].numpy()
+
+        if (A_full @ point_new <= b_full).all():
+            return point_new
+    except RuntimeError as error:
+        print(error, file=sys.stderr)
 
     return None
 
