@@ -68,7 +68,9 @@ def analyze_linear_region(
         result.integral = polytope_widths(extended_polytope).mean().item()
 
     if Metrics.UNION in metrics:
-        result.union = analyze_union(eval_net, original_net, sample, lp, opt_result_initial)
+        lp_initial_hashable = lp.to_polytope_hashable()
+        del lp  # to save some memory
+        result.union = analyze_union(eval_net, original_net, sample, lp_initial_hashable, opt_result_initial)
 
     return result
 
@@ -134,7 +136,7 @@ def analyze_union(
     eval_net: appmax.evaluation.EvaluationNet,
     original_net: torch.nn.Module,
     sample_initial: torch.Tensor,
-    lp_initial: LinearProgram,
+    lp_initial_hashable: PolytopeHashable,
     opt_result_initial: OptimizationResult,
     num_points: int = MCMC_NUM_POINTS,
     max_polytopes: int = MCMC_MAX_POLYTOPES,
@@ -147,7 +149,7 @@ def analyze_union(
     if compute_width:
         union_result.width = polytope_widths(union_lp).mean().item()
 
-    union = {lp_initial.to_polytope_hashable(): opt_result_initial}
+    union = {lp_initial_hashable: opt_result_initial}
     samples = samples_in_polytope(union_lp, sample_initial, num_points)
     union_extend(union, eval_net, samples, max_polytopes, tracking_list)
     union_result.x, union_result.fun = max(union.values(), key=lambda result: result.fun)
