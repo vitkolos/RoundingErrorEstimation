@@ -1,8 +1,11 @@
 from pathlib import Path
 import time
+import signal
+import sys
 
 import torch
 import joblib
+import joblib.externals.loky
 import pandas as pd
 import numpy as np
 
@@ -53,20 +56,27 @@ def run_parallel(
         memory = joblib.Memory(experiment_path / 'memory', verbose=0)
         wrapped_step = memory.cache(wrapped_step, ignore=['eval_net', 'original_net', 'input_sample'])
 
-    # setup generators & ensure correct solver
-    wrapped_step = joblib.delayed(wrapped_step)
-    init_kwargs = {'initializer': appmax.solving.init_worker, 'initargs': (appmax.solving._active_solver.get(),)}
-    with joblib.Parallel(return_as='generator_unordered', **init_kwargs) as para:
-        results_gen = para(wrapped_step(run_id, i, metrics, eval_net, original_net, sample)
-                           for i, sample in samples)
-        progress_gen = logger.progress(results_gen, total=len(samples), smoothing=0, main=True)
+    # handle SIGTERM (raise SystemExit)
+    signal.signal(signal.SIGTERM, lambda signum, frame: sys.exit(128 + signum))
 
-        # run & save output
-        rows = []
-        for row in progress_gen:
-            df_running = pd.DataFrame([row]).set_index('sample_index')[RESULT_COLS]
-            df_running.to_csv(experiment_path / f'{run_id}_running.csv', mode='a', header=not rows)
-            rows.append(row)
+    try:
+        # setup generators & ensure correct solver
+        wrapped_step = joblib.delayed(wrapped_step)
+        init_kwargs = {'initializer': appmax.solving.init_worker, 'initargs': (appmax.solving._active_solver.get(),)}
+        with joblib.Parallel(return_as='generator_unordered', **init_kwargs) as para:
+            results_gen = para(wrapped_step(run_id, i, metrics, eval_net, original_net, sample)
+                               for i, sample in samples)
+            progress_gen = logger.progress(results_gen, total=len(samples), smoothing=0, main=True)
+
+            # run & save output
+            rows = []
+            for row in progress_gen:
+                df_running = pd.DataFrame([row]).set_index('sample_index')[RESULT_COLS]
+                df_running.to_csv(experiment_path / f'{run_id}_running.csv', mode='a', header=not rows)
+                rows.append(row)
+    finally:
+        # shutdown dangling loky workers
+        joblib.externals.loky.get_reusable_executor().shutdown(wait=True, kill_workers=True)
 
     # process output
     df = pd.DataFrame(rows)
