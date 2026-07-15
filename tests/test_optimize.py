@@ -13,7 +13,6 @@ import tests.test_neurons
 def optimize_testing_procedure(net: nn.Module, sample: torch.Tensor, bounds: appmax.trainable.Bounds, mixing: float = 0.0):
     net_collectable = net.layers if isinstance(net, appmax.trainable.TrainableModel) else net
     constraints = appmax.neurons.Constraints()
-    constraints.neuron_states = []
     message = appmax.neurons.Message(sample)
     message = appmax.neurons.collect(net_collectable, message, constraints)
     lp = appmax.optimization.lp_from_collected(message, constraints, bounds)
@@ -32,7 +31,6 @@ def optimize_testing_procedure(net: nn.Module, sample: torch.Tensor, bounds: app
 
     # check if we get the same linear program for a point on the polytope
     constraints_point = appmax.neurons.Constraints()
-    constraints_point.neuron_states = []
     message_point = appmax.neurons.Message(sample_comb)
     message_point = appmax.neurons.collect(net_collectable, message_point, constraints_point)
     lp_point = appmax.optimization.lp_from_collected(message_point, constraints_point, bounds)

@@ -101,7 +101,7 @@ def lp_from_collected(message: appmax.neurons.Message, constraints: appmax.neuro
     objective = message.s_weight.squeeze()
     bias = message.s_bias.item()
 
-    return LinearProgram(bounds, torch.cat(A_ub), torch.cat(b_ub), objective, bias)
+    return LinearProgram(bounds, torch.cat(A_ub), torch.cat(b_ub), objective, bias, maximize=True, neuron_states=constraints.neuron_states)
 
 
 def prepare_integral(lp: LinearProgram) -> Polytope:

@@ -18,9 +18,6 @@ class Polytope:
     A_ub: torch.Tensor
     b_ub: torch.Tensor
 
-    def to_polytope_hashable(self) -> 'PolytopeHashable':
-        return PolytopeHashable(self.A_ub, self.b_ub)
-
     def get_full_constraints(self) -> tuple[np.ndarray, np.ndarray]:
         I = np.eye(len(self.bounds))
         A_matrices = [self.A_ub.numpy()]
@@ -46,22 +43,24 @@ class LinearProgram(Polytope):
     objective: torch.Tensor
     bias: float = 0.0
     maximize: bool = True
+    neuron_states: list[torch.Tensor] | None = None  # used to characterize the polytope (not used by the solvers)
+
+    def to_polytope_hashable(self) -> 'PolytopeHashable':
+        if self.neuron_states is None:
+            raise RuntimeError('neuron_states not available')
+
+        return PolytopeHashable(self.neuron_states)
 
 
 class PolytopeHashable:
-    def __init__(self, A_ub: torch.Tensor, b_ub: torch.Tensor):
+    def __init__(self, neuron_states: list[torch.Tensor]):
+        self.neuron_states = neuron_states
         # hash_tensor reduces the whole tensor using XOR, there may be frequent collisions
-        self.hash = hash((A_ub.hash_tensor().item(), b_ub.hash_tensor().item()))
-        self.A_sparse = A_ub.to_sparse()  # coalesced sparse COO tensor
-        self.b = b_ub
+        hashes = [layer.hash_tensor().item() for layer in neuron_states]
+        self.hash = hash(tuple(hashes))
 
     def __eq__(self, other):
-        return (
-            type(other) is PolytopeHashable
-            and torch.equal(self.b, other.b)
-            and torch.equal(self.A_sparse.indices(), other.A_sparse.indices())
-            and torch.equal(self.A_sparse.values(), other.A_sparse.values())
-        )
+        return type(other) is PolytopeHashable and all(torch.equal(a, b) for a, b in zip(self.neuron_states, other.neuron_states))
 
     def __hash__(self):
         return self.hash
