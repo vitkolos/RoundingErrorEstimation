@@ -34,9 +34,12 @@ class PolytopeResult:
     x: torch.Tensor | None = None  # point where the error function reaches its maximum
     fun: float | None = None  # value of the error function (in its maximum)
     width: float | None = None  # polytope mean width
+    width_pt: torch.Tensor | None = None
     integral: float | None = None  # mean width of the extended polytope
+    integral_pt : torch.Tensor | None = None
     union: PolytopeResult | None = None  # features of the larger polytope (taken from the original network)
     polytopes: int | None = None  # number of checked polytopes (used only as union.polytopes)
+    progress: list[tuple[int, float]] | None = None  # logged progress of checking polytopes (used only as union.progress)
 
 
 def analyze_linear_region(
@@ -61,11 +64,13 @@ def analyze_linear_region(
         result.x = result.x.reshape_as(sample)
 
     if Metrics.WIDTH in metrics:
-        result.width = polytope_widths(lp).mean().item()
+        result.width_pt = polytope_widths(lp)
+        result.width = result.width_pt.mean().item()
 
     if Metrics.INTEGRAL in metrics:
         extended_polytope = prepare_integral(lp)
-        result.integral = polytope_widths(extended_polytope).mean().item()
+        result.integral_pt = polytope_widths(extended_polytope)
+        result.integral = result.integral_pt.mean().item()
 
     if Metrics.UNION in metrics:
         lp_initial_hashable = lp.to_polytope_hashable()
@@ -141,20 +146,22 @@ def analyze_union(
     num_points: int = MCMC_NUM_POINTS,
     max_polytopes: int = MCMC_MAX_POLYTOPES,
     compute_width: bool = True,
-    tracking_list: list | None = None
 ) -> PolytopeResult:
     union_lp = lp_from_net(original_net, eval_net.metadata.bounds, sample_initial)
     union_result = PolytopeResult()
 
     if compute_width:
-        union_result.width = polytope_widths(union_lp).mean().item()
+        union_result.width_pt = polytope_widths(union_lp)
+        union_result.width = union_result.width_pt.mean().item()
 
     union = {lp_initial_hashable: opt_result_initial}
+    tracking_list = [(1, opt_result_initial)]
     samples = samples_in_polytope(union_lp, sample_initial, num_points)
     union_extend(union, eval_net, samples, max_polytopes, tracking_list)
     union_result.x, union_result.fun = max(union.values(), key=lambda result: result.fun)
     union_result.x = union_result.x.reshape_as(sample_initial)
     union_result.polytopes = len(union)
+    union_result.progress = [(n, res.fun) for n, res in tracking_list]
     return union_result
 
 

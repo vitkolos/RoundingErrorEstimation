@@ -2,6 +2,9 @@ from pathlib import Path
 import time
 import signal
 import sys
+import datetime
+import json
+import dataclasses
 
 import torch
 import joblib
@@ -20,15 +23,19 @@ RESULT_COLS = ERROR_COLS + ['polytope_width', 'integral', 'union_width', 'union_
 UNSCALED_COLS = ERROR_COLS + ['integral']
 
 
-def get_samples(dataset: appmax.trainable.Dataset, num_samples: str = '') -> list[tuple[int, torch.Tensor]]:
+def get_samples(dataset: appmax.trainable.Dataset, items: str = '') -> list[tuple[int, torch.Tensor]]:
     start, stop = 0, len(dataset)  # type: ignore
 
-    if ':' in num_samples:
-        s, num_samples = num_samples.split(':', 2)
-        start = max(start, int(s))
-
-    if num_samples:
-        stop = min(stop, int(num_samples))
+    if ':' in items:
+        a, b = items.split(':', 2)
+        if a:
+            start = max(start, int(a))
+        if b:
+            stop = min(stop, int(b))
+    elif items:
+        # single item
+        start = int(items)
+        stop = start + 1
 
     # clone to break connection with Storage
     return [(i, dataset[i][0].clone()) for i in range(start, stop)]
@@ -152,11 +159,49 @@ def step(
     return result
 
 
+def serializer(obj):
+    if dataclasses.is_dataclass(obj):
+        return dataclasses.asdict(obj)
+    else:
+        return str(obj)
+
+
+def run_batch(
+    experiment_path: Path | str,
+    run_id: str,
+    eval_net: appmax.evaluation.EvaluationNet,
+    original_net: torch.nn.Module,
+    samples: list[tuple[int, torch.Tensor]],
+    metrics: appmax.optimization.Metrics
+):
+    directory = Path(experiment_path) / run_id
+    directory.mkdir(parents=True, exist_ok=True)
+
+    for i, input_sample in logger.progress(samples, main=True, disable=(len(samples) == 1)):
+        file_stem = f'point_{i:04d}'
+
+        if (directory / f'{file_stem}.pt').is_file():
+            print('skipping', file_stem, file=sys.stderr)
+            continue
+
+        start_time = time.time()
+        result = single(eval_net, original_net, input_sample, metrics, preserve_structure=True)
+        result['sample_index'] = i
+        result['time'] = time.time() - start_time
+        result['date'] = str(datetime.datetime.now())
+        torch.save(result, directory / f'{file_stem}.pt')
+        torch.set_printoptions(threshold=50)
+
+        with open(directory / f'{file_stem}.json', 'w') as file_json:
+            json.dump(result, file_json, default=serializer, indent=4)
+
+
 def single(
     eval_net: appmax.evaluation.EvaluationNet,
     original_net: torch.nn.Module,
     input_sample: torch.Tensor,
     metrics: appmax.optimization.Metrics,
+    preserve_structure: bool = False,
     debug: bool = False
 ) -> dict:
     input_sample_b = input_sample.unsqueeze(0)  # sample -> batch (to support any PyTorch network)
@@ -166,18 +211,25 @@ def single(
 
     result = appmax.optimization.analyze_linear_region(eval_net, original_net, input_sample, metrics, debug=debug)
 
-    return {
-        'input_sample': input_sample,
-        'error_sample': error_sample,
-        'input_nearby': result.x,
-        'error_nearby': result.fun,
-        'polytope_width': result.width,
-        'integral': result.integral,
-        'union_input': result.union.x if result.union else None,
-        'union_error': result.union.fun if result.union else None,
-        'union_width': result.union.width if result.union else None,
-        'union_polytopes': result.union.polytopes if result.union else None,
-    }
+    if preserve_structure:
+        return {
+            'input_sample': input_sample,
+            'error_sample': error_sample,
+            'result': result
+        }
+    else:
+        return {
+            'input_sample': input_sample,
+            'error_sample': error_sample,
+            'input_nearby': result.x,
+            'error_nearby': result.fun,
+            'polytope_width': result.width,
+            'integral': result.integral,
+            'union_input': result.union.x if result.union else None,
+            'union_error': result.union.fun if result.union else None,
+            'union_width': result.union.width if result.union else None,
+            'union_polytopes': result.union.polytopes if result.union else None,
+        }
 
 
 def track_widths(experiment_path: Path | str, eval_net: appmax.evaluation.EvaluationNet, samples: list[tuple[int, torch.Tensor]], num_directions: int):
@@ -215,14 +267,12 @@ def track_union(
     for i, sample in logger.progress(samples_initial, main=True):
         lp = appmax.optimization.lp_from_net(eval_net, eval_net.metadata.bounds, sample)
         opt_result_initial = appmax.solving.solve(lp)
-        tracking_list = [(1, opt_result_initial)]
         maximum = opt_result_initial.fun
-        appmax.optimization.analyze_union(eval_net, original_net, sample, lp,
-                                          opt_result_initial, num_samples=num_samples,
-                                          compute_width=False, tracking_list=tracking_list)
+        result = appmax.optimization.analyze_union(
+            eval_net, original_net, sample, lp, opt_result_initial, num_samples=num_samples, compute_width=False)
 
-        for j, (polytopes, result) in enumerate(tracking_list):
-            maximum = max(maximum, result.fun)
-            data.append({'sample': i, 'point': j, 'polytopes': polytopes, 'fun': result.fun, 'max': maximum})
+        for j, (polytopes, fun) in enumerate(result.progress):
+            maximum = max(maximum, fun)
+            data.append({'sample': i, 'point': j, 'polytopes': polytopes, 'fun': fun, 'max': maximum})
 
     pd.DataFrame(data).to_csv(experiment_path / 'data.csv')

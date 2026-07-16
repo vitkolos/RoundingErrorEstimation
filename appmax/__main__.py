@@ -23,9 +23,9 @@ def metrics_callback(ctx, param, value):
 @click.option('-m', '--metrics', type=click.Choice(appmax.optimization.Metrics, case_sensitive=False), multiple=True, default=appmax.optimization.METRICS_ALL, callback=metrics_callback)
 @click.option('-b', '--bits', default=8, help='Number of bits used by the quantized network (default: 8).')
 @click.option('-s', '--solver', default=appmax.solving.SOLVER_DEFAULT, help='Best options: gurobi, gurobi-barrier, highs (default).')
-@click.option('-n', '--num_samples', default='', help='Usage: 3 (samples 0, 1, 2), 5:8 (samples 5, 6, 7); all the samples if left empty.')
+@click.option('-i', '--items', default='', help='Usage: 3 (sample 3), 5:8 (samples 5, 6, 7); all the samples if left empty.')
 @click.option('-j', '--jobs', default=1, help='Number of CPUs used (default: 1).')
-def main(experiment, dataset, run_id, metrics, bits, solver, num_samples, jobs):
+def main(experiment, dataset, run_id, metrics, bits, solver, items, jobs):
     """
     AppMax \n
     input: evaluation network (original net. & approximated net. combined), data samples \n
@@ -52,7 +52,7 @@ def main(experiment, dataset, run_id, metrics, bits, solver, num_samples, jobs):
                 print('mae approx', model_approx.quality('mae', data_split.test, data_split.metadata.error_scaling))
 
             case 'widths' | 'union':
-                samples_dev = appmax.experiment.get_samples(model.subset(data_split.dev), num_samples)
+                samples_dev = appmax.experiment.get_samples(model.subset(data_split.dev), items)
 
                 if experiment == 'widths':
                     appmax.experiment.track_widths(
@@ -61,8 +61,8 @@ def main(experiment, dataset, run_id, metrics, bits, solver, num_samples, jobs):
                     appmax.experiment.track_union(
                         f'experiments/{dataset}/union', eval_net, model.layers, samples_dev, num_samples=150)
 
-            case 'single' | 'parallel' | 'mcmc':
-                samples_test = appmax.experiment.get_samples(model.subset(data_split.test), num_samples)
+            case 'single' | 'mcmc' | 'parallel' | 'batch':
+                samples_test = appmax.experiment.get_samples(model.subset(data_split.test), items)
 
                 if experiment == 'single':
                     results = appmax.experiment.single(eval_net, model.layers, samples_test[1][1], metrics, debug=True)
@@ -72,9 +72,13 @@ def main(experiment, dataset, run_id, metrics, bits, solver, num_samples, jobs):
                     union_lp = appmax.optimization.lp_from_net(model.layers, eval_net.metadata.bounds, sample_initial)
                     samples = appmax.optimization.samples_in_polytope(union_lp, sample_initial, num_points=3)
                     print(samples)
-                else:
+                elif experiment == 'parallel':
                     appmax.experiment.run_parallel(
                         f'experiments/{dataset}', run_id, eval_net, model.layers, samples_test, metrics)
+                elif experiment == 'batch':
+                    appmax.experiment.run_batch(
+                        f'experiments/{dataset}', run_id, eval_net, model.layers, samples_test, metrics)
+
 
 
 if __name__ == '__main__':
