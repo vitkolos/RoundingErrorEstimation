@@ -168,7 +168,12 @@ def run_batch(
     metrics: appmax.optimization.Metrics
 ):
     directory = Path(experiment_path) / run_id
-    directory.mkdir(parents=True, exist_ok=True)
+
+    try:
+        directory.mkdir(parents=True, exist_ok=True)
+    except FileExistsError:
+        # mkdir could cause problems if run in parallel (we can safely ignore this error)
+        pass
 
     for i, input_sample in logger.progress(samples, main=True, disable=(len(samples) == 1)):
         file_stem = f'point_{i:04d}'
