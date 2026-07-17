@@ -159,13 +159,6 @@ def step(
     return result
 
 
-def serializer(obj):
-    if dataclasses.is_dataclass(obj):
-        return dataclasses.asdict(obj)
-    else:
-        return str(obj)
-
-
 def run_batch(
     experiment_path: Path | str,
     run_id: str,
@@ -184,16 +177,29 @@ def run_batch(
             print('skipping', file_stem, file=sys.stderr)
             continue
 
+        data = {}
+        data['sample_index'] = i
+        data['date'] = str(datetime.datetime.now())
+
         start_time = time.time()
-        result = single(eval_net, original_net, input_sample, metrics, preserve_structure=True)
-        result['sample_index'] = i
-        result['time'] = time.time() - start_time
-        result['date'] = str(datetime.datetime.now())
-        torch.save(result, directory / f'{file_stem}.pt')
-        torch.set_printoptions(threshold=50)
+        results = single(eval_net, original_net, input_sample, metrics, preserve_structure=True)
+        data['time'] = time.time() - start_time
+
+        data['result_sample'] = dataclasses.asdict(results['result_sample'])
+        data['result_nearby'] = dataclasses.asdict(results['result_nearby'])
+
+        torch.save(data, directory / f'{file_stem}.pt')
 
         with open(directory / f'{file_stem}.json', 'w') as file_json:
-            json.dump(result, file_json, default=serializer, indent=4)
+            torch.set_printoptions(threshold=50)
+            json.dump(data, file_json, default=str, indent=4)
+
+
+def load_batch_results(experiment_path: Path | str, run_id: str) -> list[dict]:
+    directory = Path(experiment_path) / run_id
+    results = [torch.load(f) for f in directory.glob('point_*.pt')]
+    results.sort(key=lambda x: x['sample_index'])
+    return results
 
 
 def single(
@@ -213,23 +219,26 @@ def single(
 
     if preserve_structure:
         return {
-            'input_sample': input_sample,
-            'error_sample': error_sample,
-            'result': result
+            'result_sample': appmax.optimization.PolytopeResult(input_sample, error_sample),
+            'result_nearby': result
         }
     else:
-        return {
-            'input_sample': input_sample,
-            'error_sample': error_sample,
-            'input_nearby': result.x,
-            'error_nearby': result.fun,
-            'polytope_width': result.width,
-            'integral': result.integral,
-            'union_input': result.union.x if result.union else None,
-            'union_error': result.union.fun if result.union else None,
-            'union_width': result.union.width if result.union else None,
-            'union_polytopes': result.union.polytopes if result.union else None,
-        }
+        to_flat_dict(input_sample, error_sample, result)
+
+
+def to_flat_dict(input_sample, error_sample, result: appmax.optimization.PolytopeResult) -> dict:
+    return {
+        'input_sample': input_sample,
+        'error_sample': error_sample,
+        'input_nearby': result.x,
+        'error_nearby': result.fun,
+        'polytope_width': result.width,
+        'integral': result.integral,
+        'union_input': result.union.x if result.union else None,
+        'union_error': result.union.fun if result.union else None,
+        'union_width': result.union.width if result.union else None,
+        'union_polytopes': result.union.polytopes if result.union else None,
+    }
 
 
 def track_widths(experiment_path: Path | str, eval_net: appmax.evaluation.EvaluationNet, samples: list[tuple[int, torch.Tensor]], num_directions: int):
