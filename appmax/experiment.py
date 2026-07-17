@@ -41,6 +41,10 @@ def get_samples(dataset: appmax.trainable.Dataset, items: str = '') -> list[tupl
     return [(i, dataset[i][0].clone()) for i in range(start, stop)]
 
 
+def get_init_kwargs():
+    return {'initializer': appmax.solving.init_worker, 'initargs': (appmax.solving._active_solver.get(),)}
+
+
 def run_parallel(
     experiment_path: Path | str,
     run_id: str,
@@ -69,8 +73,7 @@ def run_parallel(
     try:
         # setup generators & ensure correct solver
         wrapped_step = joblib.delayed(wrapped_step)
-        init_kwargs = {'initializer': appmax.solving.init_worker, 'initargs': (appmax.solving._active_solver.get(),)}
-        with joblib.Parallel(return_as='generator_unordered', **init_kwargs) as para:
+        with joblib.Parallel(return_as='generator_unordered', **get_init_kwargs()) as para:
             results_gen = para(wrapped_step(run_id, i, metrics, eval_net, original_net, sample)
                                for i, sample in samples)
             progress_gen = logger.progress(results_gen, total=len(samples), smoothing=0, main=True)
@@ -175,29 +178,49 @@ def run_batch(
         # mkdir could cause problems if run in parallel (we can safely ignore this error)
         pass
 
-    for i, input_sample in logger.progress(samples, main=True, disable=(len(samples) == 1)):
-        file_stem = f'point_{i:04d}'
+    try:
+        wrapped_step = joblib.delayed(batch_step)
+        with joblib.Parallel(return_as='generator_unordered', **get_init_kwargs()) as para:
+            results_gen = para(wrapped_step(directory, eval_net, original_net, metrics, i, sample)
+                               for i, sample in samples)
+            for _ in logger.progress(results_gen, total=len(samples), smoothing=0, main=True):
+                # batch_step does not return anything
+                pass
+    finally:
+        # shutdown dangling loky workers
+        joblib.externals.loky.get_reusable_executor().shutdown(wait=True, kill_workers=True)
 
-        if (directory / f'{file_stem}.pt').is_file():
-            print('skipping', file_stem, file=sys.stderr)
-            continue
 
-        data = {}
-        data['sample_index'] = i
-        data['date'] = str(datetime.datetime.now())
+def batch_step(
+    directory: Path,
+    eval_net: appmax.evaluation.EvaluationNet,
+    original_net: torch.nn.Module,
+    metrics: appmax.optimization.Metrics,
+    sample_index: int,
+    input_sample: torch.Tensor,
+):
+    file_stem = f'point_{sample_index:04d}'
 
-        start_time = time.time()
-        results = single(eval_net, original_net, input_sample, metrics, preserve_structure=True)
-        data['time'] = time.time() - start_time
+    if (directory / f'{file_stem}.pt').is_file():
+        print('skipping', file_stem, file=sys.stderr)
+        return
 
-        data['result_sample'] = dataclasses.asdict(results['result_sample'])
-        data['result_nearby'] = dataclasses.asdict(results['result_nearby'])
+    data = {}
+    data['sample_index'] = sample_index
+    data['date'] = str(datetime.datetime.now())
 
-        torch.save(data, directory / f'{file_stem}.pt')
+    start_time = time.time()
+    results = single(eval_net, original_net, input_sample, metrics, preserve_structure=True)
+    data['time'] = time.time() - start_time
 
-        with open(directory / f'{file_stem}.json', 'w') as file_json:
-            torch.set_printoptions(threshold=50)
-            json.dump(data, file_json, default=str, indent=4)
+    data['result_sample'] = dataclasses.asdict(results['result_sample'])
+    data['result_nearby'] = dataclasses.asdict(results['result_nearby'])
+
+    torch.save(data, directory / f'{file_stem}.pt')
+
+    with open(directory / f'{file_stem}.json', 'w') as file_json:
+        torch.set_printoptions(threshold=50)
+        json.dump(data, file_json, default=str, indent=4)
 
 
 def load_batch_results(experiment_path: Path | str, run_id: str) -> list[dict]:

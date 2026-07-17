@@ -80,6 +80,5 @@ def main(experiment, dataset, run_id, metrics, bits, solver, items, jobs):
                         f'experiments/{dataset}', run_id, eval_net, model.layers, samples_test, metrics)
 
 
-
 if __name__ == '__main__':
     main()
