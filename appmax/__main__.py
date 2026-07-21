@@ -65,10 +65,10 @@ def main(experiment, dataset, run_id, metrics, bits, solver, items, jobs):
                 samples_test = appmax.experiment.get_samples(model.subset(data_split.test), items)
 
                 if experiment == 'single':
-                    results = appmax.experiment.single(eval_net, model.layers, samples_test[1][1], metrics, debug=True)
+                    results = appmax.experiment.single(eval_net, model.layers, samples_test[0][1], metrics, debug=True)
                     print(results)
                 elif experiment == 'mcmc':
-                    sample_initial = samples_test[2][1]
+                    sample_initial = samples_test[0][1]
                     union_lp = appmax.optimization.lp_from_net(model.layers, eval_net.metadata.bounds, sample_initial)
                     samples = appmax.optimization.samples_in_polytope(union_lp, sample_initial, num_points=3)
                     print(samples)

@@ -251,7 +251,7 @@ def single(
             'result_nearby': result
         }
     else:
-        to_flat_dict(input_sample, error_sample, result)
+        return to_flat_dict(input_sample, error_sample, result)
 
 
 def to_flat_dict(input_sample, error_sample, result: appmax.optimization.PolytopeResult) -> dict:
