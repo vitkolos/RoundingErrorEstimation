@@ -7,10 +7,6 @@ from network import SmallDenseNet, SmallConvNet
 from dataset import create_dataset
 
 
-def n_relu(w):
-    return -F.relu(-w)
-
-
 def load_network():
     net = MODEL()
     net.load_state_dict(torch.load(NETWORK, map_location='cpu'))
@@ -22,6 +18,7 @@ class Message:
     def __init__(self, shape):
         self.a = torch.full(shape, torch.inf).double()
         self.b = torch.full(shape, -torch.inf).double()
+        self.a_old = torch.full(shape, torch.inf).double()
         self.b_old = torch.full(shape, -torch.inf).double()
         self.alpha = torch.zeros(shape).double()
         self.beta = torch.zeros(shape).double()
@@ -64,40 +61,34 @@ def input_ab_message(class_=None):
     return message
 
 
-def shift_bias(layer: nn.Module, message: Message):
-    """accounts for the fact that input values can be below zero (using this new bias we can act as if they are not)"""
-    if not message.input_processed:
-        bias = layer(message.a)
-        message.b -= message.a
-        message.a -= message.a
-        message.input_processed = True
-        assert torch.all(message.b >= 0)
-    else:
-        bias = layer.bias if layer.bias is not None else torch.zeros(layer.weight.shape[0]).double()
-
-        if isinstance(layer, nn.Conv2d):
-            bias = bias[..., None, None]
-
-        # assert torch.all(message.b > 0)
-
-    # assert torch.all(message.a == 0)
-    return message, bias
+def get_fun(layer: nn.Module):
+    match layer:
+        case nn.Linear():
+            return F.linear
+        case nn.Conv2d():
+            def conv(input: torch.Tensor, weight: torch.Tensor, bias: torch.Tensor | None = None):
+                return layer._conv_forward(input, weight, bias)
+            return conv
+        case _:
+            raise NotImplementedError
 
 
-def layer_ab(layer: nn.Module, message: Message, bias: torch.Tensor):
+def n_relu(w):
+    return -F.relu(-w)
+
+
+def layer_ab(layer: nn.Module, message: Message):
+    assert isinstance(layer.weight, torch.Tensor)
+    assert layer.bias is None or isinstance(layer.bias, torch.Tensor)
+
     w_neg = n_relu(layer.weight)
     w_pos = F.relu(layer.weight)
 
-    match layer:
-        case nn.Linear():
-            a_new = bias + F.linear(message.b, w_neg) + F.linear(message.a, w_pos)
-            b_new = bias + F.linear(message.a, w_neg) + F.linear(message.b, w_pos)
-        case nn.Conv2d():
-            def conv(x, w): return layer._conv_forward(x, w, None)
-            a_new = bias + conv(message.b, w_neg) + conv(message.a, w_pos)
-            b_new = bias + conv(message.a, w_neg) + conv(message.b, w_pos)
+    fun = get_fun(layer)
+    a_new = fun(message.b, w_neg, layer.bias) + fun(message.a, w_pos)
+    b_new = fun(message.a, w_neg, layer.bias) + fun(message.b, w_pos)
 
-    message.b_old = message.b
+    message.a_old, message.b_old = message.a, message.b
     message.a, message.b = a_new, b_new
     return message
 
@@ -106,31 +97,24 @@ def tilde(x):
     return x.half().double()
 
 
-def layer_alpha_beta(layer: nn.Module, message: Message, bias: torch.Tensor):
+def layer_alpha_beta(layer: nn.Module, m: Message):
     weight_tilde = tilde(layer.weight)
-    bias_tilde = tilde(bias)
+    bias_tilde = tilde(layer.bias)
     weight_delta = weight_tilde - layer.weight
-    bias_delta = bias_tilde - bias
-    weight_delta_neg = n_relu(weight_delta)
-    weight_delta_pos = F.relu(weight_delta)
-    weight_tilde_neg = n_relu(weight_tilde)
-    weight_tilde_pos = F.relu(weight_tilde)
+    bias_delta = bias_tilde - layer.bias
+    w_delta_neg = n_relu(weight_delta)
+    w_delta_pos = F.relu(weight_delta)
+    w_tilde_neg = n_relu(weight_tilde)
+    w_tilde_pos = F.relu(weight_tilde)
 
-    match layer:
-        case nn.Linear():
-            alpha_new = bias_delta + F.linear(message.b_old, weight_delta_neg)
-            beta_new = bias_delta + F.linear(message.b_old, weight_delta_pos)
-            alpha_new += F.linear(message.alpha, weight_tilde_pos) + F.linear(message.beta, weight_tilde_neg)
-            beta_new += F.linear(message.alpha, weight_tilde_neg) + F.linear(message.beta, weight_tilde_pos)
-        case nn.Conv2d():
-            def conv(x, w): return layer._conv_forward(x, w, None)
-            alpha_new = bias_delta + conv(message.b_old, weight_delta_neg)
-            beta_new = bias_delta + conv(message.b_old, weight_delta_pos)
-            alpha_new += conv(message.alpha, weight_tilde_pos) + conv(message.beta, weight_tilde_neg)
-            beta_new += conv(message.alpha, weight_tilde_neg) + conv(message.beta, weight_tilde_pos)
+    fun = get_fun(layer)
+    alpha_new = fun(m.a_old, w_delta_pos, bias_delta) + fun(m.b_old, w_delta_neg)
+    beta_new = fun(m.a_old, w_delta_neg, bias_delta) + fun(m.b_old, w_delta_pos)
+    alpha_new += fun(m.alpha, w_tilde_pos) + fun(m.beta, w_tilde_neg)
+    beta_new += fun(m.alpha, w_tilde_neg) + fun(m.beta, w_tilde_pos)
 
-    message.alpha, message.beta = alpha_new, beta_new
-    return message
+    m.alpha, m.beta = alpha_new, beta_new
+    return m
 
 
 def intervals(class_):
@@ -148,9 +132,10 @@ def intervals(class_):
                     message = message.apply_special(layer)
                     message.report(i)
                 case nn.Linear() | nn.Conv2d():
-                    message, bias = shift_bias(layer, message)
-                    message = layer_ab(layer, message, bias)
-                    message = layer_alpha_beta(layer, message, bias)
+                    message = layer_ab(layer, message)
+                    message = layer_alpha_beta(layer, message)
+                case _:
+                    raise NotImplementedError
 
         message.report(i)
 
