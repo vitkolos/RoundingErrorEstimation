@@ -7,6 +7,7 @@ import torch
 import numpy as np
 import scipy.optimize
 import gurobipy
+import joblib
 
 import appmax.logger as logger
 from appmax.trainable import Bounds
@@ -98,15 +99,16 @@ def get_min_max_lps(lp: LinearProgram, objective: torch.Tensor) -> tuple[LinearP
 
 
 @overload
-def solve(lp: LinearProgram, verbose: bool = False) -> OptimizationResult: ...
+def solve(lp: LinearProgram, solver: str = '', verbose: bool = False) -> OptimizationResult: ...
 
 
 @overload
-def solve(lp: LinearProgram, verbose: bool = False, *, multiple_objectives: torch.Tensor) -> MultipleResults: ...
+def solve(lp: LinearProgram, solver: str = '', verbose: bool = False,
+          *, multiple_objectives: torch.Tensor) -> MultipleResults: ...
 
 
-def solve(lp: LinearProgram, verbose: bool = False, multiple_objectives: torch.Tensor | None = None) -> OptimizationResult | MultipleResults:
-    solver = _active_solver.get()  # in lowercase
+def solve(lp: LinearProgram, solver: str = '', verbose: bool = False, multiple_objectives: torch.Tensor | None = None) -> OptimizationResult | MultipleResults:
+    solver = solver if solver else _active_solver.get()  # in lowercase
 
     if solver == 'gurobi' or solver == 'gurobi-barrier':
         return solve_gurobi(lp, verbose, force_barrier=(solver == 'gurobi-barrier'), multiple_objectives=multiple_objectives)
@@ -122,6 +124,27 @@ def solve(lp: LinearProgram, verbose: bool = False, multiple_objectives: torch.T
         return [(solve_single(lp_min), solve_single(lp_max)) for lp_min, lp_max in lps]
 
     return solve_single(lp)
+
+
+def solve_parallel(lp: LinearProgram, multiple_objectives: torch.Tensor, num_jobs: int) -> MultipleResults:
+    if num_jobs <= 1:
+        return solve(lp, multiple_objectives=multiple_objectives)
+
+    solver = _active_solver.get()
+    chunks = torch.chunk(multiple_objectives, num_jobs)
+    results = []
+
+    try:
+        wrapped_solve = joblib.delayed(solve)
+        with joblib.Parallel(return_as='generator_unordered') as para:
+            results_gen = para(wrapped_solve(lp, solver, multiple_objectives=chunk) for chunk in chunks)
+            for r in logger.progress(results_gen, total=len(chunks), smoothing=0, main=True):
+                results.extend(r)
+    finally:
+        # shutdown dangling loky workers
+        joblib.externals.loky.get_reusable_executor().shutdown(wait=True, kill_workers=True)
+
+    return results
 
 
 def solve_scipy(lp: LinearProgram, verbose: bool) -> OptimizationResult:

@@ -168,7 +168,8 @@ def run_batch(
     eval_net: appmax.evaluation.EvaluationNet,
     original_net: torch.nn.Module,
     samples: list[tuple[int, torch.Tensor]],
-    metrics: appmax.optimization.Metrics
+    metrics: appmax.optimization.Metrics,
+    num_jobs: int
 ):
     directory = Path(experiment_path) / run_id
 
@@ -178,17 +179,21 @@ def run_batch(
         # mkdir could cause problems if run in parallel (we can safely ignore this error)
         pass
 
-    try:
-        wrapped_step = joblib.delayed(batch_step)
-        with joblib.Parallel(return_as='generator_unordered', **get_init_kwargs()) as para:
-            results_gen = para(wrapped_step(directory, eval_net, original_net, metrics, i, sample)
-                               for i, sample in samples)
-            for _ in logger.progress(results_gen, total=len(samples), smoothing=0, main=True):
-                # batch_step does not return anything
-                pass
-    finally:
-        # shutdown dangling loky workers
-        joblib.externals.loky.get_reusable_executor().shutdown(wait=True, kill_workers=True)
+    if len(samples) == 1:
+        i, sample = samples[0]
+        batch_step(directory, eval_net, original_net, metrics, i, sample, num_jobs)
+    else:
+        try:
+            wrapped_step = joblib.delayed(batch_step)
+            with joblib.Parallel(return_as='generator_unordered', **get_init_kwargs()) as para:
+                results_gen = para(wrapped_step(directory, eval_net, original_net, metrics, i, sample)
+                                   for i, sample in samples)
+                for _ in logger.progress(results_gen, total=len(samples), smoothing=0, main=True):
+                    # batch_step does not return anything
+                    pass
+        finally:
+            # shutdown dangling loky workers
+            joblib.externals.loky.get_reusable_executor().shutdown(wait=True, kill_workers=True)
 
 
 def batch_step(
@@ -198,6 +203,7 @@ def batch_step(
     metrics: appmax.optimization.Metrics,
     sample_index: int,
     input_sample: torch.Tensor,
+    num_jobs: int = 1
 ):
     file_stem = f'point_{sample_index:04d}'
 
@@ -210,7 +216,7 @@ def batch_step(
     data['date'] = str(datetime.datetime.now())
 
     start_time = time.time()
-    results = single(eval_net, original_net, input_sample, metrics, preserve_structure=True)
+    results = single(eval_net, original_net, input_sample, metrics, num_jobs, preserve_structure=True)
     data['time'] = time.time() - start_time
 
     data['result_sample'] = dataclasses.asdict(results['result_sample'])
@@ -235,6 +241,7 @@ def single(
     original_net: torch.nn.Module,
     input_sample: torch.Tensor,
     metrics: appmax.optimization.Metrics,
+    num_jobs: int = 1,
     preserve_structure: bool = False,
     debug: bool = False
 ) -> dict:
@@ -243,7 +250,7 @@ def single(
     with torch.no_grad():
         error_sample = eval_net(input_sample_b).item()
 
-    result = appmax.optimization.analyze_linear_region(eval_net, original_net, input_sample, metrics, debug=debug)
+    result = appmax.optimization.analyze_linear_region(eval_net, original_net, input_sample, metrics, num_jobs, debug=debug)
 
     if preserve_structure:
         return {

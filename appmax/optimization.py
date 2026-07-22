@@ -36,10 +36,11 @@ class PolytopeResult:
     width: float | None = None  # polytope mean width
     width_pt: torch.Tensor | None = None
     integral: float | None = None  # mean width of the extended polytope
-    integral_pt : torch.Tensor | None = None
+    integral_pt: torch.Tensor | None = None
     union: PolytopeResult | None = None  # features of the larger polytope (taken from the original network)
     polytopes: int | None = None  # number of checked polytopes (used only as union.polytopes)
-    progress: list[tuple[int, float]] | None = None  # logged progress of checking polytopes (used only as union.progress)
+    # logged progress of checking polytopes (used only as union.progress)
+    progress: list[tuple[int, float]] | None = None
 
 
 def analyze_linear_region(
@@ -47,6 +48,7 @@ def analyze_linear_region(
     original_net: torch.nn.Module,
     sample: torch.Tensor,
     metrics: Metrics = Metrics.MAXIMUM,
+    num_jobs: int = 1,
     debug: bool = False,
 ) -> PolytopeResult:
     """'sample' needs to be a single sample (not a batch)"""
@@ -64,18 +66,19 @@ def analyze_linear_region(
         result.x = result.x.reshape_as(sample)
 
     if Metrics.WIDTH in metrics:
-        result.width_pt = polytope_widths(lp)
+        result.width_pt = polytope_widths(lp, num_jobs=num_jobs)
         result.width = result.width_pt.mean().item()
 
     if Metrics.INTEGRAL in metrics:
         extended_polytope = prepare_integral(lp)
-        result.integral_pt = polytope_widths(extended_polytope)
+        result.integral_pt = polytope_widths(extended_polytope, num_jobs=num_jobs)
         result.integral = result.integral_pt.mean().item()
 
     if Metrics.UNION in metrics:
         lp_initial_hashable = lp.to_polytope_hashable()
         del lp  # to save some memory
-        result.union = analyze_union(eval_net, original_net, sample, lp_initial_hashable, opt_result_initial)
+        result.union = analyze_union(eval_net, original_net, sample, lp_initial_hashable,
+                                     opt_result_initial, num_jobs=num_jobs)
 
     return result
 
@@ -125,14 +128,14 @@ def prepare_integral(lp: LinearProgram) -> Polytope:
     return Polytope(bounds, A_ub, b_ub)
 
 
-def polytope_widths(polytope: Polytope, num_directions: int = NUM_DIRECTIONS, cummulative_avg: bool = False) -> torch.Tensor:
+def polytope_widths(polytope: Polytope, num_directions: int = NUM_DIRECTIONS, cummulative_avg: bool = False, num_jobs: int = 1) -> torch.Tensor:
     """returns widths of the polytope computed from many random directions (or the cummulative average in each step)"""
     # variables == dimensions
     num_variables = polytope.A_ub.shape[1]
     directions = torch.randn(num_directions, num_variables)
     directions /= torch.linalg.vector_norm(directions, dim=1, keepdim=True)
     lp = LinearProgram(polytope.bounds, polytope.A_ub, polytope.b_ub, objective=torch.empty(0))
-    results = appmax.solving.solve(lp, multiple_objectives=directions)
+    results = appmax.solving.solve_parallel(lp, directions, num_jobs)
     widths = torch.tensor([(res_max.fun - res_min.fun) for res_min, res_max in results])
     return widths if not cummulative_avg else widths.cumsum(dim=0) / torch.arange(1, num_directions+1)
 
@@ -146,12 +149,13 @@ def analyze_union(
     num_points: int = MCMC_NUM_POINTS,
     max_polytopes: int = MCMC_MAX_POLYTOPES,
     compute_width: bool = True,
+    num_jobs: int = 1,
 ) -> PolytopeResult:
     union_lp = lp_from_net(original_net, eval_net.metadata.bounds, sample_initial)
     union_result = PolytopeResult()
 
     if compute_width:
-        union_result.width_pt = polytope_widths(union_lp)
+        union_result.width_pt = polytope_widths(union_lp, num_jobs=num_jobs)
         union_result.width = union_result.width_pt.mean().item()
 
     union = {lp_initial_hashable: opt_result_initial}
