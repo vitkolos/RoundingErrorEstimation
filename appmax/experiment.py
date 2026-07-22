@@ -181,6 +181,7 @@ def run_batch(
 
     if len(samples) == 1:
         i, sample = samples[0]
+        # we pass num_jobs so that polytope_widths can be computed in parallel
         batch_step(directory, eval_net, original_net, metrics, i, sample, num_jobs)
     else:
         try:
