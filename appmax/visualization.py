@@ -63,8 +63,19 @@ def main(visualization, dataset, run_id):
                 f.write(tables_to_html(tables, into_one=False))
 
         case 'cardinalities':
-            # evaluate_subsets(f'experiments/{dataset}', run_id, bundle.data_split.metadata.error_scaling)
+            evaluate_subsets(f'experiments/{dataset}', run_id, bundle.data_split.metadata.error_scaling)
             plot_subsets(f'experiments/{dataset}', run_id)
+
+        case 'batch2csv':
+            batch2csv(f'experiments/{dataset}', run_id)
+
+
+def batch2csv(experiment_path: Path | str, run_id: str):
+    experiment_path = Path(experiment_path)
+    results = appmax.experiment.load_batch_results(experiment_path, run_id)
+    df = pd.DataFrame(appmax.experiment.dict2flat(r) for r in results)
+    df = df.set_index('sample_index').sort_index()
+    df.to_csv(experiment_path / f'{run_id}_results.csv')
 
 
 def plot_results(experiment_path: Path | str, run_id: str):

@@ -251,7 +251,8 @@ def single(
     with torch.no_grad():
         error_sample = eval_net(input_sample_b).item()
 
-    result = appmax.optimization.analyze_linear_region(eval_net, original_net, input_sample, metrics, num_jobs, debug=debug)
+    result = appmax.optimization.analyze_linear_region(
+        eval_net, original_net, input_sample, metrics, num_jobs, debug=debug)
 
     if preserve_structure:
         return {
@@ -259,10 +260,10 @@ def single(
             'result_nearby': result
         }
     else:
-        return to_flat_dict(input_sample, error_sample, result)
+        return result2flat(input_sample, error_sample, result)
 
 
-def to_flat_dict(input_sample, error_sample, result: appmax.optimization.PolytopeResult) -> dict:
+def result2flat(input_sample, error_sample, result: appmax.optimization.PolytopeResult) -> dict:
     return {
         'input_sample': input_sample,
         'error_sample': error_sample,
@@ -274,6 +275,20 @@ def to_flat_dict(input_sample, error_sample, result: appmax.optimization.Polytop
         'union_error': result.union.fun if result.union else None,
         'union_width': result.union.width if result.union else None,
         'union_polytopes': result.union.polytopes if result.union else None,
+    }
+
+
+def dict2flat(result: dict) -> dict:
+    return {
+        'sample_index': result['sample_index'],
+        'error_sample': result['result_sample']['fun'],
+        'error_nearby': result['result_nearby']['fun'],
+        'polytope_width': result['result_nearby']['width'],
+        'integral': result['result_nearby']['integral'],
+        'union_error': result['result_nearby']['union']['fun'],
+        'union_width': result['result_nearby']['union']['width'],
+        'union_polytopes': result['result_nearby']['union']['polytopes'],
+        'time': result['time'],
     }
 
 
