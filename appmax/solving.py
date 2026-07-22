@@ -136,7 +136,7 @@ def solve_parallel(lp: LinearProgram, multiple_objectives: torch.Tensor, num_job
 
     try:
         wrapped_solve = joblib.delayed(solve)
-        with joblib.Parallel(return_as='generator_unordered') as para:
+        with joblib.Parallel(return_as='generator_unordered', require='sharedmem') as para:
             results_gen = para(wrapped_solve(lp, solver, multiple_objectives=chunk) for chunk in chunks)
             for r in logger.progress(results_gen, total=len(chunks), smoothing=0, main=True):
                 results.extend(r)
