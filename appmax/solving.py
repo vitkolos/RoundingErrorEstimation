@@ -244,6 +244,7 @@ def solve_cuopt(lp: LinearProgram, verbose: bool) -> OptimizationResult:
 
     settings = solver_settings.SolverSettings()
     settings.set_parameter(solver.solver_parameters.CUOPT_METHOD, solver_settings.SolverMethod.PDLP)
+    settings.set_parameter(solver.solver_parameters.CUOPT_LOG_TO_CONSOLE, verbose)
     p.solve(settings)
 
     if p.Status.name != 'Optimal':
