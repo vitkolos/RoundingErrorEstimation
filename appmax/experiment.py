@@ -183,6 +183,9 @@ def run_batch(
         i, sample = samples[0]
         # we pass num_jobs so that polytope_widths can be computed in parallel
         batch_step(directory, eval_net, original_net, metrics, i, sample, num_jobs)
+    elif num_jobs <= 1:
+        for i, sample in samples:
+            batch_step(directory, eval_net, original_net, metrics, i, sample)
     else:
         try:
             wrapped_step = joblib.delayed(batch_step)
