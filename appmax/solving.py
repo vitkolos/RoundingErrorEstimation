@@ -227,13 +227,13 @@ def solve_cuopt(lp: LinearProgram, verbose: bool) -> OptimizationResult:
     for j in range(num_variables):
         lb, ub = lp.bounds.seq[j]
         vars.append(p.addVariable(
-            lb if lb is not None else -solver.infinity(),
-            ub if ub is not None else solver.infinity(),
+            lb if lb is not None else float('-inf'),
+            ub if ub is not None else float('inf'),
         ))
 
     b_ub = lp.b_ub.tolist()
     for i in range(num_constraints):
-        nz = torch.nonzero(lp.A_ub[i]).squeeze()
+        nz = torch.nonzero(lp.A_ub[i], as_tuple=True)[0]
         active_vars = [vars[j] for j in nz.tolist()]
         coeffs = lp.A_ub[i, nz].tolist()
         expr = problem.LinearExpression(active_vars, coeffs, 0.0)
