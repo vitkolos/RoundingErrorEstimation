@@ -193,12 +193,10 @@ def samples_in_polytope(polytope: Polytope, sample_initial: torch.Tensor, num_po
 
 
 def move_point_inside(point_initial: np.ndarray, A_full: np.ndarray, b_full: np.ndarray) -> np.ndarray | None:
-    """the point may be outside the polytope due to rounding errors"""
-    if (A_full @ point_initial <= b_full).all():
-        return point_initial
+    """the point may be outside the polytope (or too close to its edge) due to rounding errors
+    -> we find the Chebyshev center to be on the safe side
+    (see https://en.wikipedia.org/w/index.php?title=Chebyshev_center&oldid=1340455583#Linear_programming_problem)"""
 
-    # find the Chebyshev center
-    # see https://en.wikipedia.org/w/index.php?title=Chebyshev_center&oldid=1340455583#Linear_programming_problem
     try:
         A_pt, b_pt = torch.from_numpy(A_full), torch.from_numpy(b_full)
         num_vars = point_initial.size
@@ -211,6 +209,7 @@ def move_point_inside(point_initial: np.ndarray, A_full: np.ndarray, b_full: np.
         point_new = result.x[:-1].numpy()
 
         if (A_full @ point_new <= b_full).all():
+            # this condition likely always holds
             return point_new
     except RuntimeError as error:
         print(error, file=sys.stderr)
