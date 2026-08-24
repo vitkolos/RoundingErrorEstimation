@@ -5,6 +5,7 @@ import sys
 import datetime
 import json
 import dataclasses
+from typing import Any
 
 import torch
 import joblib
@@ -24,7 +25,7 @@ UNSCALED_COLS = ERROR_COLS + ['integral']
 
 
 def get_samples(dataset: appmax.trainable.Dataset, items: str = '') -> list[tuple[int, torch.Tensor]]:
-    start, stop = 0, len(dataset)  # type: ignore
+    start, stop = 0, len(dataset)  # type: ignore[arg-type]
 
     if ':' in items:
         a, b = items.split(':', 2)
@@ -79,7 +80,7 @@ def run_parallel(
             progress_gen = logger.progress(results_gen, total=len(samples), smoothing=0, main=True)
 
             # run & save output
-            rows = []
+            rows: list[dict] = []
             for row in progress_gen:
                 df_running = pd.DataFrame([row]).set_index('sample_index')[RESULT_COLS]
                 df_running.to_csv(experiment_path / f'{run_id}_running.csv', mode='a', header=not rows)
@@ -183,8 +184,8 @@ def run_batch(
         i, sample = samples[0]
         # we pass num_jobs so that polytope_widths can be computed in parallel
         batch_step(directory, eval_net, original_net, metrics, i, sample, num_jobs)
-    elif num_jobs <= 1:
-        for i, sample in samples:
+    elif num_jobs == 1:
+        for i, sample in logger.progress(samples, main=True):
             batch_step(directory, eval_net, original_net, metrics, i, sample)
     else:
         try:
@@ -215,7 +216,7 @@ def batch_step(
         print('skipping', file_stem, file=sys.stderr)
         return
 
-    data = {}
+    data: dict[str, Any] = {}
     data['sample_index'] = sample_index
     data['date'] = str(datetime.datetime.now())
 
@@ -298,7 +299,6 @@ def dict2flat(result: dict) -> dict:
 def track_widths(experiment_path: Path | str, eval_net: appmax.evaluation.EvaluationNet, samples: list[tuple[int, torch.Tensor]], num_directions: int):
     experiment_path = Path(experiment_path)
     experiment_path.mkdir(parents=True, exist_ok=True)
-    assert eval_net.metadata.bounds is not None
     data = []
 
     def extend_data(i: int, type_: str, widths: torch.Tensor):
@@ -324,7 +324,6 @@ def track_union(
 ):
     experiment_path = Path(experiment_path)
     experiment_path.mkdir(parents=True, exist_ok=True)
-    assert eval_net.metadata.bounds is not None
     data = []
 
     for i, sample in logger.progress(samples_initial, main=True):
@@ -332,7 +331,8 @@ def track_union(
         opt_result_initial = appmax.solving.solve(lp)
         maximum = opt_result_initial.fun
         result = appmax.optimization.analyze_union(
-            eval_net, original_net, sample, lp, opt_result_initial, num_samples=num_samples, compute_width=False)
+            eval_net, original_net, sample, lp.to_polytope_hashable(), opt_result_initial, num_points=num_samples, compute_width=False)
+        assert result.progress is not None
 
         for j, (polytopes, fun) in enumerate(result.progress):
             maximum = max(maximum, fun)

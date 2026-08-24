@@ -61,15 +61,15 @@ def load_utkface_from_images():
 class UTKFaceDataset(appmax.trainable.Dataset):
     def __init__(self, data: torch.Tensor, target: torch.Tensor, metadata: appmax.trainable.Metadata):
         self.data = data
-        target = target.numpy()
+        target_np = target.numpy()
 
         if metadata.scaler is None:
             metadata.scaler = sklearn.preprocessing.StandardScaler()
-            metadata.scaler.fit(target)
+            metadata.scaler.fit(target_np)
             metadata.error_scaling = metadata.scaler.scale_[0]
 
-        target = metadata.scaler.transform(target)
-        self.target = torch.from_numpy(target).to(dtype=torch.get_default_dtype())
+        target_np = metadata.scaler.transform(target_np)
+        self.target = torch.from_numpy(target_np).to(dtype=torch.get_default_dtype())
 
     def __len__(self):
         return self.data.shape[0]

@@ -14,6 +14,9 @@ import appmax.applications
 
 
 SEED = 42
+EXPERIMENTS_DIR = Path('experiments')
+LOAD_MODE = 'batch'
+
 rng = np.random.default_rng(SEED)
 
 
@@ -23,64 +26,67 @@ rng = np.random.default_rng(SEED)
 @click.argument('run-id', default='run')
 def main(visualization, dataset, run_id):
     bundle = appmax.applications.DataBundle(dataset)
+    error_scaling = bundle.data_split.metadata.error_scaling
     aliases = {'run': 'asym8', 'second': 'asym4'}
+    dataset_path = EXPERIMENTS_DIR / dataset
 
     match visualization.lower():
         case 'widths':
-            plot_tracked_widths({'california': f'experiments/california/widths', 'year': f'experiments/year/widths'})
+            plot_tracked_widths({'california': EXPERIMENTS_DIR / 'california' / 'widths',
+                                 'year': EXPERIMENTS_DIR / 'year' / 'widths'})
 
         case 'union':
-            plot_tracked_union(f'experiments/{dataset}/union')
+            plot_tracked_union(dataset_path / 'union')
 
         case 'histograms':
-            plot_results(f'experiments/{dataset}', run_id)
+            plot_results(dataset_path, run_id)
 
         case 'comparison':
-            with open('experiments/comparison.html', 'w') as f:
-                items = [
-                    ('experiments/california', ['run', 'sym8']),
-                    ('experiments/california', ['second', 'sym4']),
-                    ('experiments/year', ['run', 'sym8']),
-                    ('experiments/year', ['second', 'sym4']),
-                ]
-                tables = [compare_results(*item, aliases) for item in items]
-                f.write(tables_to_html(tables))
+            table = compare_results(dataset_path, ['4bit', '6bit', '8bit'], error_scaling, aliases)
+
+            with open(dataset_path / 'comparison.tex', 'w') as f:
+                f.write(table.to_latex())
+
+            with open(dataset_path / 'comparison.html', 'w') as f:
+                f.write(wrap_html_tables([table.to_html()]))
 
         case 'points':
             indices = sorted(rng.permutation(1000)[:20].tolist())
             datasets = [
-                ('experiments/california', appmax.applications.california_housing.CaliforniaHousingSplit().metadata.error_scaling),
-                ('experiments/year', appmax.applications.year_prediction.YearPredictionSplit().metadata.error_scaling),
+                (EXPERIMENTS_DIR / 'california', appmax.applications.california_housing.CaliforniaHousingSplit().metadata.error_scaling),
+                (EXPERIMENTS_DIR / 'year', appmax.applications.year_prediction.YearPredictionSplit().metadata.error_scaling),
             ]
             runs = ('run', 'sym8', 'second', 'sym4')
 
-            with open('experiments/points.html', 'w') as f:
+            with open(EXPERIMENTS_DIR / 'points.html', 'w') as f:
                 tables = [list_points(d, r, 1.0, indices, aliases) for d, _ in datasets for r in runs]
-                f.write(tables_to_html(tables, into_one=False))
+                f.write(wrap_html_tables(tables, into_one=False))
 
-            with open('experiments/points_unscaled.html', 'w') as f:
+            with open(EXPERIMENTS_DIR / 'points_unscaled.html', 'w') as f:
                 tables = [list_points(d, r, s, indices, aliases) for d, s in datasets for r in runs]
-                f.write(tables_to_html(tables, into_one=False))
+                f.write(wrap_html_tables(tables, into_one=False))
 
         case 'cardinalities':
-            evaluate_subsets(f'experiments/{dataset}', run_id, bundle.data_split.metadata.error_scaling)
-            plot_subsets(f'experiments/{dataset}', run_id)
-
-        case 'batch2csv':
-            batch2csv(f'experiments/{dataset}', run_id)
+            evaluate_subsets(dataset_path, run_id, error_scaling)
+            plot_subsets(dataset_path, run_id)
 
 
-def batch2csv(experiment_path: Path | str, run_id: str):
-    experiment_path = Path(experiment_path)
-    results = appmax.experiment.load_batch_results(experiment_path, run_id)
-    df = pd.DataFrame(appmax.experiment.dict2flat(r) for r in results)
-    df = df.set_index('sample_index').sort_index()
-    df.to_csv(experiment_path / f'{run_id}_results.csv')
+def load_df_results(experiment_path: Path, run_id: str) -> pd.DataFrame:
+    match LOAD_MODE:
+        case 'csv':
+            df = pd.read_csv(experiment_path / f'{run_id}_results.csv', index_col=0)
+        case 'batch':
+            results = appmax.experiment.load_batch_results(experiment_path, run_id)
+            df = pd.DataFrame(appmax.experiment.dict2flat(r) for r in results)
+            df = df.set_index('sample_index').sort_index()
+        case _:
+            raise NotImplementedError
+
+    return df
 
 
-def plot_results(experiment_path: Path | str, run_id: str):
-    experiment_path = Path(experiment_path)
-    df_results = pd.read_csv(experiment_path / f'{run_id}_results.csv')
+def plot_results(experiment_path: Path, run_id: str):
+    df_results = load_df_results(experiment_path, run_id)
     target_dir = experiment_path / f'{run_id}_plots'
     target_dir.mkdir(parents=True, exist_ok=True)
 
@@ -91,35 +97,38 @@ def plot_results(experiment_path: Path | str, run_id: str):
         plt.close()
 
 
-def compare_results(experiment_path: Path | str, run_ids: list[str], aliases: dict[str, str]) -> str:
-    experiment_path = Path(experiment_path)
-    dfs = {run_id: pd.read_csv(experiment_path / f'{run_id}_described_unscaled.csv', index_col=0) for run_id in run_ids}
+def compare_results(experiment_path: Path, run_ids: list[str], error_scaling: float, aliases: dict[str, str]) -> pd.DataFrame:
+    dfs = {run_id: load_df_results(experiment_path, run_id) for run_id in run_ids}
 
-    def extract_metrics(name: str, df: pd.DataFrame):
+    def extract_metrics(name: str, df_results: pd.DataFrame):
+        df_results.loc[:, appmax.experiment.UNSCALED_COLS] *= error_scaling
+        described = appmax.experiment.describe(df_results)
         return {
             'run': f'{experiment_path.name}: {aliases[name] if name in aliases else name}',
-            'sample_max': df.loc['max', 'error_sample'],
-            'sample_mean': df.loc['mean', 'error_sample'],
-            'nearby_max': df.loc['max', 'error_nearby'],
-            'nearby_mean': df.loc['mean', 'error_nearby'],
-            'nearby_weighted_sum': df.loc['weighted', 'error_nearby'],
-            'integral_divided_sum': df.loc['weighted', 'integral'],
+            'sample_max': described.loc['max', 'error_sample'],
+            'sample_mean': described.loc['mean', 'error_sample'],
+            'nearby_max': described.loc['max', 'error_nearby'],
+            'nearby_mean': described.loc['mean', 'error_nearby'],
+            'nearby_weighted_sum': described.loc['weighted', 'error_nearby'],
+            'integral_divided_sum': described.loc['weighted', 'integral'],
+            'union_mean': described.loc['mean', 'union_error'],
+            'union_weighted_sum': described.loc['weighted', 'union_error'],
         }
 
     df = pd.DataFrame(extract_metrics(*item) for item in dfs.items())
     df = df.set_index('run')
     df.index.name = None
-    styled_df = df.style.highlight_min(color='lightgreen', axis=0)
-    return styled_df.to_html()
+    return df
 
 
-def list_points(experiment_path: Path | str, run_id: str, error_scaling: float, indices: list[int], aliases: dict[str, str]) -> str:
-    experiment_path = Path(experiment_path)
-    df_results = pd.read_csv(experiment_path / f'{run_id}_results.csv')
+def list_points(experiment_path: Path, run_id: str, error_scaling: float, indices: list[int], aliases: dict[str, str]) -> str:
+    df_results = load_df_results(experiment_path, run_id)
     df_results.loc[:, appmax.experiment.UNSCALED_COLS] *= error_scaling
-    weights_sum = df_results.get('polytope_width').sum()
+    weights = df_results.get('polytope_width')
+    assert weights is not None
+    weights_sum = weights.sum()
 
-    def row(item: pd.Series):
+    def row(item):
         return {
             'index': int(item['sample_index']),
             'error_sample': item['error_sample'],
@@ -135,7 +144,7 @@ def list_points(experiment_path: Path | str, run_id: str, error_scaling: float, 
     df = df.set_index('index')
     df.index.name = None
     hl_args = {'axis': 0, 'props': 'font-weight:bold'}
-    styled_df = df.style.highlight_min(**hl_args).highlight_max(**hl_args)
+    styled_df = df.style.highlight_min(**hl_args).highlight_max(**hl_args)  # type: ignore[arg-type]
 
     run_name = aliases[run_id] if run_id in aliases else run_id
     s_tex = r'\sum_{x\in T} \tilde d_n(\Xi_x)'
@@ -163,7 +172,7 @@ TEX_ALIASES = {
 }
 
 
-def tables_to_html(tables, into_one=True):
+def wrap_html_tables(tables, into_one=True):
     html = ''.join(tables)
 
     if into_one:
@@ -256,8 +265,7 @@ def plot_tracked_widths(experiments: dict[str, str]):
             plot_charts('different', f'{type_}_{sample+1:02d}', [(e, (sample, type_), e) for e in experiments.keys()])
 
 
-def plot_tracked_union(experiment_path: Path | str):
-    experiment_path = Path(experiment_path)
+def plot_tracked_union(experiment_path: Path):
     data = pd.read_csv(experiment_path / 'data.csv', index_col=0)
     grouped = data.groupby('sample')
 
@@ -290,12 +298,11 @@ def plot_tracked_union(experiment_path: Path | str):
 COL_SIZE = ('size', 'exact')
 
 
-def evaluate_subsets(experiment_path: Path | str, run_id: str, error_scaling: float):
+def evaluate_subsets(experiment_path: Path, run_id: str, error_scaling: float):
     NUM_SUBSETS = 100
     STEP = 50
     START = STEP
-    experiment_path = Path(experiment_path)
-    df_results = pd.read_csv(experiment_path / f'{run_id}_results.csv', index_col=0)
+    df_results = load_df_results(experiment_path, run_id)
     df_results.loc[:, appmax.experiment.UNSCALED_COLS] *= error_scaling
     stats_for_sizes = []
 
@@ -324,8 +331,7 @@ def evaluate_subsets(experiment_path: Path | str, run_id: str, error_scaling: fl
     pd.DataFrame(stats_for_sizes).to_csv(experiment_path / f'{run_id}_subsets.csv')
 
 
-def plot_subsets(experiment_path: Path | str, run_id: str):
-    experiment_path = Path(experiment_path)
+def plot_subsets(experiment_path: Path, run_id: str):
     df = pd.read_csv(experiment_path / f'{run_id}_subsets.csv', header=[0, 1], index_col=0)
     columns = df.columns.get_level_values(0).unique().drop('size')
 

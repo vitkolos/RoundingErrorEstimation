@@ -19,7 +19,7 @@ class YearPredictionDataset(appmax.trainable.Dataset):
 
     def __init__(self, metadata: appmax.trainable.Metadata, train: bool):
         rows = {('nrows' if train else 'skiprows'): self.TD_LEN}
-        data = pd.read_csv(f'{DATA_HOME}/YearPredictionMSD.txt', header=None, **rows).to_numpy()  # type: ignore
+        data = pd.read_csv(f'{DATA_HOME}/YearPredictionMSD.txt', header=None, **rows).to_numpy()  # type: ignore[call-overload]
 
         if metadata.scaler is None:
             metadata.scaler = sklearn.preprocessing.StandardScaler()

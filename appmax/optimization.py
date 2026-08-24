@@ -5,7 +5,7 @@ import sys
 
 import torch
 import numpy as np
-import polytopewalk
+import polytopewalk  # type: ignore[import-not-found]
 
 import appmax.neurons
 import appmax.evaluation
@@ -52,7 +52,6 @@ def analyze_linear_region(
     debug: bool = False,
 ) -> PolytopeResult:
     """'sample' needs to be a single sample (not a batch)"""
-    assert eval_net.metadata.bounds is not None
     lp = lp_from_net(eval_net, eval_net.metadata.bounds, sample)
 
     if debug:
@@ -218,7 +217,7 @@ def move_point_inside(point_initial: np.ndarray, A_full: np.ndarray, b_full: np.
 
 
 def union_extend(
-    union: dict[PolytopeHashable, PolytopeResult],
+    union: dict[PolytopeHashable, OptimizationResult],
     eval_net: appmax.evaluation.EvaluationNet,
     samples: torch.Tensor,
     max_polytopes: int,

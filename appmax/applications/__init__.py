@@ -1,10 +1,14 @@
 import torch
 
 from appmax.applications import california_housing, year_prediction, utkface
+import appmax.trainable
 
 
 class DataBundle:
     def __init__(self, dataset: str):
+        self.model_class: type[appmax.trainable.BaseModel]
+        self.data_split: appmax.trainable.DataSplit
+
         match dataset.lower():
             case 'california':
                 self.model_file = "models/california_housing_mlp.pt"

@@ -48,7 +48,7 @@ class Bounds:
 
 @dataclass
 class Metadata:
-    bounds: Bounds | None = None
+    bounds: Bounds = None  # type: ignore[assignment]
     scaler: Any = None
     error_scaling: float = 1.0
     sl_data: slice = field(default_factory=lambda: slice(1, None))
@@ -161,10 +161,11 @@ class TrainableModel(BaseModel):
             self.eval()
             return self._execute_epoch(loader, train=False)
 
-    def quality(self, metric_name: str, data_test: Dataset, error_scaling: float) -> tuple[float, float]:
+    def quality(self, metric_name: str, data_test: Dataset, error_scaling: float) -> float:
         with torch.no_grad():
             self.eval()
             loader = torch.utils.data.DataLoader(data_test, batch_size=self.batch_size)
+            metric_fn: torchmetrics.Metric | None = None
 
             match metric_name.lower():
                 case 'rmse':
@@ -209,7 +210,7 @@ class TrainableModel(BaseModel):
 
     def subset(self, dataset: Dataset) -> Dataset:
         """creates a subset of the dataset containing only items where the model is accurate enough"""
-        predictions = []
+        predictions_list = []
         loader = torch.utils.data.DataLoader(dataset, batch_size=self.batch_size)
 
         with torch.no_grad():
@@ -218,15 +219,15 @@ class TrainableModel(BaseModel):
 
             for X, y in appmax.logger.progress(loader):
                 X, y = X.to(device), y.to(device)
-                predictions.append(self(X))
+                predictions_list.append(self(X))
 
-        predictions = torch.cat(predictions)
+        predictions = torch.cat(predictions_list)
         targets = dataset[:][1]
         accurate_enough = (targets - predictions).abs() < 1.0
         accurate_count = accurate_enough.sum()
         indices = torch.nonzero(accurate_enough, as_tuple=True)[0].tolist()
-        print(
-            f'subset contains only {accurate_count} data points ({len(dataset)-accurate_count} removed, model was too inaccurate)', file=sys.stderr)
+        removed_count = len(dataset)-accurate_count  # type: ignore[arg-type]
+        print(f'subset contains only {accurate_count} data points ({removed_count} removed, model was too inaccurate)', file=sys.stderr)
         return torch.utils.data.Subset(dataset, indices)
 
 
