@@ -23,14 +23,28 @@ rng = np.random.default_rng(SEED)
 @click.command()
 @click.argument('visualization')
 @click.argument('dataset')
-@click.argument('run-id', default='run')
-def main(visualization, dataset, run_id):
+@click.argument('run-ids', default=['run'], nargs=-1)
+def main(visualization, dataset, run_ids):
     bundle = appmax.applications.DataBundle(dataset)
     error_scaling = bundle.data_split.metadata.error_scaling
-    aliases = {'run': 'asym8', 'second': 'asym4'}
     dataset_path = EXPERIMENTS_DIR / dataset
 
     match visualization.lower():
+        case 'comparison':
+            table = compare_results(dataset_path, run_ids, error_scaling)
+
+            with open(dataset_path / 'comparison.tex', 'w') as f:
+                f.write(table.to_latex())
+
+            with open(dataset_path / 'comparison.html', 'w') as f:
+                f.write(wrap_html_tables([table.to_html()]))
+
+        case 'cardinalities':
+            # evaluate_subsets(dataset_path, run_ids[0], error_scaling)
+            plot_subsets(dataset_path, run_ids[0])
+
+        # ---
+
         case 'widths':
             plot_tracked_widths({'california': EXPERIMENTS_DIR / 'california' / 'widths',
                                  'year': EXPERIMENTS_DIR / 'year' / 'widths'})
@@ -39,16 +53,7 @@ def main(visualization, dataset, run_id):
             plot_tracked_union(dataset_path / 'union')
 
         case 'histograms':
-            plot_results(dataset_path, run_id)
-
-        case 'comparison':
-            table = compare_results(dataset_path, ['4bit', '6bit', '8bit'], error_scaling, aliases)
-
-            with open(dataset_path / 'comparison.tex', 'w') as f:
-                f.write(table.to_latex())
-
-            with open(dataset_path / 'comparison.html', 'w') as f:
-                f.write(wrap_html_tables([table.to_html()]))
+            plot_results(dataset_path, run_ids[0])
 
         case 'points':
             indices = sorted(rng.permutation(1000)[:20].tolist())
@@ -59,16 +64,12 @@ def main(visualization, dataset, run_id):
             runs = ('run', 'sym8', 'second', 'sym4')
 
             with open(EXPERIMENTS_DIR / 'points.html', 'w') as f:
-                tables = [list_points(d, r, 1.0, indices, aliases) for d, _ in datasets for r in runs]
+                tables = [list_points(d, r, 1.0, indices) for d, _ in datasets for r in runs]
                 f.write(wrap_html_tables(tables, into_one=False))
 
             with open(EXPERIMENTS_DIR / 'points_unscaled.html', 'w') as f:
-                tables = [list_points(d, r, s, indices, aliases) for d, s in datasets for r in runs]
+                tables = [list_points(d, r, s, indices) for d, s in datasets for r in runs]
                 f.write(wrap_html_tables(tables, into_one=False))
-
-        case 'cardinalities':
-            evaluate_subsets(dataset_path, run_id, error_scaling)
-            plot_subsets(dataset_path, run_id)
 
 
 def load_df_results(experiment_path: Path, run_id: str) -> pd.DataFrame:
@@ -85,43 +86,91 @@ def load_df_results(experiment_path: Path, run_id: str) -> pd.DataFrame:
     return df
 
 
-def plot_results(experiment_path: Path, run_id: str):
-    df_results = load_df_results(experiment_path, run_id)
-    target_dir = experiment_path / f'{run_id}_plots'
-    target_dir.mkdir(parents=True, exist_ok=True)
+def extract_metrics(df_results: pd.DataFrame):
+    described = appmax.experiment.describe(df_results)
+    return {
+        'sample_max': described.loc['max', 'error_sample'],
+        'sample_mean': described.loc['mean', 'error_sample'],
+        'nearby_max': described.loc['max', 'error_nearby'],
+        'nearby_mean': described.loc['mean', 'error_nearby'],
+        'nearby_weighted_sum': described.loc['weighted', 'error_nearby'],
+        'integral_divided_sum': described.loc['weighted', 'integral'],
+        'union_mean': described.loc['mean', 'union_error'],
+        'union_weighted_sum': described.loc['weighted', 'union_error'],
+    }
 
-    for col in ['error_sample', 'error_nearby', 'polytope_width', 'integral']:
-        plt.hist(df_results[col], 50)
-        plt.title(col)
-        plt.savefig(target_dir / f'{col}_hist.png')
-        plt.close()
 
-
-def compare_results(experiment_path: Path, run_ids: list[str], error_scaling: float, aliases: dict[str, str]) -> pd.DataFrame:
+def compare_results(experiment_path: Path, run_ids: list[str], error_scaling: float, aliases: dict[str, str] = {}) -> pd.DataFrame:
     dfs = {run_id: load_df_results(experiment_path, run_id) for run_id in run_ids}
 
-    def extract_metrics(name: str, df_results: pd.DataFrame):
+    def analyze(name: str, df_results: pd.DataFrame):
         df_results.loc[:, appmax.experiment.UNSCALED_COLS] *= error_scaling
-        described = appmax.experiment.describe(df_results)
         return {
             'run': f'{experiment_path.name}: {aliases[name] if name in aliases else name}',
-            'sample_max': described.loc['max', 'error_sample'],
-            'sample_mean': described.loc['mean', 'error_sample'],
-            'nearby_max': described.loc['max', 'error_nearby'],
-            'nearby_mean': described.loc['mean', 'error_nearby'],
-            'nearby_weighted_sum': described.loc['weighted', 'error_nearby'],
-            'integral_divided_sum': described.loc['weighted', 'integral'],
-            'union_mean': described.loc['mean', 'union_error'],
-            'union_weighted_sum': described.loc['weighted', 'union_error'],
+            **extract_metrics(df_results),
         }
 
-    df = pd.DataFrame(extract_metrics(*item) for item in dfs.items())
+    df = pd.DataFrame(analyze(*item) for item in dfs.items())
     df = df.set_index('run')
     df.index.name = None
     return df
 
 
-def list_points(experiment_path: Path, run_id: str, error_scaling: float, indices: list[int], aliases: dict[str, str]) -> str:
+COL_SIZE = ('size', 'exact')
+
+
+def evaluate_subsets(experiment_path: Path, run_id: str, error_scaling: float):
+    NUM_SUBSETS = 100
+    STEP = 50
+    START = STEP
+    df_results = load_df_results(experiment_path, run_id)
+    df_results.loc[:, appmax.experiment.UNSCALED_COLS] *= error_scaling
+    stats_for_sizes = []
+
+    for size in appmax.logger.progress(range(START, len(df_results), STEP)):
+        subsets_same_size = []
+
+        for _ in range(NUM_SUBSETS):
+            indices = rng.choice(len(df_results), size, replace=False)
+            metrics = extract_metrics(df_results.loc[indices])
+            subsets_same_size.append(metrics)
+
+        stats_same_size = pd.DataFrame(subsets_same_size).describe()
+        stats_compact = stats_same_size.loc[['mean', 'std']].unstack()
+        stats_compact.loc[COL_SIZE] = size
+        stats_for_sizes.append(stats_compact)
+
+    pd.DataFrame(stats_for_sizes).to_csv(experiment_path / f'{run_id}_subsets.csv')
+
+
+def plot_subsets(experiment_path: Path, run_id: str):
+    df = pd.read_csv(experiment_path / f'{run_id}_subsets.csv', header=[0, 1], index_col=0)
+    columns = df.columns.get_level_values(0).unique().drop('size')
+
+    with PdfPages(experiment_path / f'{run_id}_subsets.pdf') as pdf:
+        # plt.rcParams['text.usetex'] = True
+
+        for column in columns:
+            size = df.loc[:, COL_SIZE]
+            mean = df.loc[:, (column, 'mean')]
+            std = df.loc[:, (column, 'std')]
+            fig, ax = plt.subplots()
+            plt.plot(size, mean, '.-')
+            plt.fill_between(size, mean-std, mean+std, alpha=0.2)
+            title = column.replace('_', ' ')
+
+            if tex := TEX_ALIASES.get(column):
+                title = f'${tex}$ {title}'
+
+            plt.title(title)
+            plt.grid(True, linestyle='--', alpha=0.5)
+            ax.set_xlabel('cardinality')
+            ax.set_ylabel(r'metric ($\mu\pm\sigma$)')
+            pdf.savefig()
+            plt.close()
+
+
+def list_points(experiment_path: Path, run_id: str, error_scaling: float, indices: list[int], aliases: dict[str, str] = {}) -> str:
     df_results = load_df_results(experiment_path, run_id)
     df_results.loc[:, appmax.experiment.UNSCALED_COLS] *= error_scaling
     weights = df_results.get('polytope_width')
@@ -158,8 +207,8 @@ TEX_ALIASES = {
     'sample_mean': r'\overline{E_T}',
     'nearby_max': r'E_{\Xi_T}',
     'nearby_mean': r'\overline{E_{\Xi_T}}',
-    'nearby_weighted_sum': r'\overline E^{\tilde d}_{\Xi_T}',
-    'integral_divided_sum': r'\overline E^{\tilde d}_{\Xi_T^E}',
+    'nearby_weighted_sum': r'\overline{E}^{\tilde d}_{\Xi_T}',
+    'integral_divided_sum': r'\overline{E}^{\tilde d}_{\Xi_T^E}',
     'error_sample': r'E(x)',
     'error_nearby': r'E_{\Xi_x}',
     'polytope_width': r'\tilde d_n(\Xi_x)',
@@ -167,8 +216,8 @@ TEX_ALIASES = {
     'nearby_weighted': r'\frac{\tilde d_n(\Xi_x)}{S} E_{\Xi_x}',
     'integral_width': r'\tilde d_{n+1}(\Xi_x^E)',
     'integral_divided': r'\tilde d_{n+1}(\Xi_x^E)\over S',
-    'union_mean': r'\overline E_{\overline \Xi_T}',
-    'union_weighted_sum': r'\overline E^{\tilde d}_{\overline \Xi_T}',
+    'union_mean': r'\overline{E}_{\overline{\Xi}_T}',
+    'union_weighted_sum': r'\overline{E}^{\tilde d}_{\overline{\Xi}_T}',
 }
 
 
@@ -188,6 +237,18 @@ def wrap_html_tables(tables, into_one=True):
         <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.47/dist/contrib/auto-render.min.js" integrity="sha384-bjyGPfbij8/NDKJhSGZNP/khQVgtHUE5exjm4Ydllo42FwIgYsdLO2lXGmRBf5Mz" crossorigin="anonymous" onload="renderMathInElement(document.body);"></script>
     """
     return f'<!doctype html><html><head>{katex}<style>{style}</style></head><body>{html}</body></html>'
+
+
+def plot_results(experiment_path: Path, run_id: str):
+    df_results = load_df_results(experiment_path, run_id)
+    target_dir = experiment_path / f'{run_id}_plots'
+    target_dir.mkdir(parents=True, exist_ok=True)
+
+    for col in ['error_sample', 'error_nearby', 'polytope_width', 'integral']:
+        plt.hist(df_results[col], 50)
+        plt.title(col)
+        plt.savefig(target_dir / f'{col}_hist.png')
+        plt.close()
 
 
 def plot_tracked_widths(experiments: dict[str, str]):
@@ -293,69 +354,6 @@ def plot_tracked_union(experiment_path: Path):
 
     for sample in grouped.groups.keys():
         plot_chart('single', sample)
-
-
-COL_SIZE = ('size', 'exact')
-
-
-def evaluate_subsets(experiment_path: Path, run_id: str, error_scaling: float):
-    NUM_SUBSETS = 100
-    STEP = 50
-    START = STEP
-    df_results = load_df_results(experiment_path, run_id)
-    df_results.loc[:, appmax.experiment.UNSCALED_COLS] *= error_scaling
-    stats_for_sizes = []
-
-    for size in appmax.logger.progress(range(START, len(df_results), STEP)):
-        subsets_same_size = []
-
-        for _ in range(NUM_SUBSETS):
-            indices = rng.choice(len(df_results), size, replace=False)
-            described = appmax.experiment.describe(df_results.loc[indices])
-            subsets_same_size.append({
-                'sample_max': described.loc['max', 'error_sample'],
-                'sample_mean': described.loc['mean', 'error_sample'],
-                'nearby_max': described.loc['max', 'error_nearby'],
-                'nearby_mean': described.loc['mean', 'error_nearby'],
-                'nearby_weighted_sum': described.loc['weighted', 'error_nearby'],
-                'integral_divided_sum': described.loc['weighted', 'integral'],
-                'union_mean': described.loc['mean', 'union_error'],
-                'union_weighted_sum': described.loc['weighted', 'union_error'],
-            })
-
-        stats_same_size = pd.DataFrame(subsets_same_size).describe()
-        stats_compact = stats_same_size.loc[['mean', 'std']].unstack()
-        stats_compact.loc[COL_SIZE] = size
-        stats_for_sizes.append(stats_compact)
-
-    pd.DataFrame(stats_for_sizes).to_csv(experiment_path / f'{run_id}_subsets.csv')
-
-
-def plot_subsets(experiment_path: Path, run_id: str):
-    df = pd.read_csv(experiment_path / f'{run_id}_subsets.csv', header=[0, 1], index_col=0)
-    columns = df.columns.get_level_values(0).unique().drop('size')
-
-    with PdfPages(experiment_path / f'{run_id}_subsets.pdf') as pdf:
-        plt.rcParams['text.usetex'] = True
-
-        for column in columns:
-            size = df.loc[:, COL_SIZE]
-            mean = df.loc[:, (column, 'mean')]
-            std = df.loc[:, (column, 'std')]
-            fig, ax = plt.subplots()
-            plt.plot(size, mean, '.-')
-            plt.fill_between(size, mean-std, mean+std, alpha=0.2)
-            title = column.replace('_', ' ')
-
-            if tex := TEX_ALIASES.get(column):
-                title = f'${tex}$ {title}'
-
-            plt.title(title)
-            plt.grid(True, linestyle='--', alpha=0.5)
-            ax.set_xlabel('cardinality')
-            ax.set_ylabel(r'metric ($\mu\pm\sigma$)')
-            pdf.savefig()
-            plt.close()
 
 
 if __name__ == '__main__':
