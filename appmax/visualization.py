@@ -228,7 +228,6 @@ def plot_subsets(experiment_path: Path, run_id: str):
                 plt.fill_between(size, mean-std, mean+std, alpha=0.2)
                 legend.append({'label': label, 'handle': handle, 'last_value': mean.iloc[-1]})
 
-            plt.title(title)
             legend.sort(key=lambda item: item['last_value'], reverse=True)
 
             def print_legend(legend, loc='best'):
@@ -243,7 +242,7 @@ def plot_subsets(experiment_path: Path, run_id: str):
             plt.grid(True, linestyle='--', alpha=0.5)
             ax.set_xlabel('cardinality')
             ax.set_ylabel(r'metric ($\mu\pm\sigma$)')
-            plt.savefig(subsets_dir / f'{title}.svg', format='svg', bbox_inches='tight')
+            plt.savefig(subsets_dir / f'{title}.svg', bbox_inches='tight')
             pdf.savefig()
             plt.close()
 
@@ -275,9 +274,8 @@ def plot_histograms(experiment_path: Path, run_id: str):
     target_dir.mkdir(parents=True, exist_ok=True)
 
     for col in df_results.columns:
-        plt.hist(df_results[col], 50)
-        plt.title(col)
-        plt.savefig(target_dir / f'{col}.svg')
+        plt.hist(df_results[col], bins='auto', histtype='stepfilled')
+        plt.savefig(target_dir / f'{col}.svg', bbox_inches='tight')
         plt.close()
 
 
