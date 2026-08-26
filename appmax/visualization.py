@@ -4,6 +4,7 @@ import re
 import collections
 
 import click
+import torch
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -42,7 +43,16 @@ def main(visualization, dataset, run_ids, plot_only):
 
                 plot_subsets(dataset_path, run_id)
 
+        case 'input-face':
+            show_input_faces(dataset_path, run_ids[0])
+
+        case 'histograms':
+            plot_histograms(dataset_path, run_ids[0])
+
         # ---
+
+        case 'points':
+            print_points()
 
         case 'widths':
             plot_tracked_widths({'california': EXPERIMENTS_DIR / 'california' / 'widths',
@@ -51,24 +61,8 @@ def main(visualization, dataset, run_ids, plot_only):
         case 'union':
             plot_tracked_union(dataset_path / 'union')
 
-        case 'histograms':
-            plot_results(dataset_path, run_ids[0])
-
-        case 'points':
-            indices = sorted(rng.permutation(1000)[:20].tolist())
-            datasets = [
-                (EXPERIMENTS_DIR / 'california', appmax.applications.california_housing.CaliforniaHousingSplit().metadata.error_scaling),
-                (EXPERIMENTS_DIR / 'year', appmax.applications.year_prediction.YearPredictionSplit().metadata.error_scaling),
-            ]
-            runs = ('run', 'sym8', 'second', 'sym4')
-
-            with open(EXPERIMENTS_DIR / 'points.html', 'w') as f:
-                tables = [list_points(d, r, 1.0, indices) for d, _ in datasets for r in runs]
-                f.write(wrap_html_tables(tables, into_one=False))
-
-            with open(EXPERIMENTS_DIR / 'points_unscaled.html', 'w') as f:
-                tables = [list_points(d, r, s, indices) for d, s in datasets for r in runs]
-                f.write(wrap_html_tables(tables, into_one=False))
+        case _:
+            raise NotImplementedError(f'{visualization} not implemented')
 
 
 TEX_ALIASES = {
@@ -254,6 +248,59 @@ def plot_subsets(experiment_path: Path, run_id: str):
             plt.close()
 
 
+def show_input_faces(experiment_path: Path, run_id: str):
+    NUM_FACES = 30
+    results = appmax.experiment.load_batch_results(experiment_path, run_id)
+
+    target_dir = experiment_path / f'{run_id}_outputs' / 'faces'
+    target_dir.mkdir(parents=True, exist_ok=True)
+
+    def x_to_img(x: torch.Tensor):
+        return (x.movedim(0, -1) + 1) / 2
+
+    for i, item in enumerate(results[:NUM_FACES]):
+        xs: dict[str, torch.Tensor] = {}
+        xs['original'] = item['result_sample']['x']
+        xs['nearby'] = item['result_nearby']['x']
+        xs['union'] = item['result_nearby']['union']['x']
+
+        for name, x in xs.items():
+            plt.imsave(target_dir / f'face_{i:04d}_{name}.png', x_to_img(x))
+
+
+def plot_histograms(experiment_path: Path, run_id: str):
+    df_results = load_df_results(experiment_path, run_id)
+
+    target_dir = experiment_path / f'{run_id}_outputs' / 'histograms'
+    target_dir.mkdir(parents=True, exist_ok=True)
+
+    for col in df_results.columns:
+        plt.hist(df_results[col], 50)
+        plt.title(col)
+        plt.savefig(target_dir / f'{col}.svg')
+        plt.close()
+
+
+# ---
+
+
+def print_points():
+    indices = sorted(rng.permutation(1000)[:20].tolist())
+    datasets = [
+        (EXPERIMENTS_DIR / 'california', appmax.applications.california_housing.CaliforniaHousingSplit().metadata.error_scaling),
+        (EXPERIMENTS_DIR / 'year', appmax.applications.year_prediction.YearPredictionSplit().metadata.error_scaling),
+    ]
+    runs = ('run', 'sym8', 'second', 'sym4')
+
+    with open(EXPERIMENTS_DIR / 'points.html', 'w') as f:
+        tables = [list_points(d, r, 1.0, indices) for d, _ in datasets for r in runs]
+        f.write(wrap_html_tables(tables, into_one=False))
+
+    with open(EXPERIMENTS_DIR / 'points_unscaled.html', 'w') as f:
+        tables = [list_points(d, r, s, indices) for d, s in datasets for r in runs]
+        f.write(wrap_html_tables(tables, into_one=False))
+
+
 def list_points(experiment_path: Path, run_id: str, error_scaling: float, indices: list[int], aliases: dict[str, str] = {}) -> str:
     df_results = load_df_results(experiment_path, run_id)
     df_results.loc[:, appmax.experiment.UNSCALED_COLS] *= error_scaling
@@ -284,18 +331,6 @@ def list_points(experiment_path: Path, run_id: str, error_scaling: float, indice
     unscaled_text = '' if error_scaling == 1.0 else f'(unscaled = multiplied by {error_scaling:.6f} to get the original units)'
     header = f'<p><b>{experiment_path.name}: {run_name}</b> {unscaled_text}</p><p>\\( S = {s_tex} = \\) {weights_sum:.6f}</p>'
     return header + styled_df.to_html()
-
-
-def plot_results(experiment_path: Path, run_id: str):
-    df_results = load_df_results(experiment_path, run_id)
-    target_dir = experiment_path / f'{run_id}_plots'
-    target_dir.mkdir(parents=True, exist_ok=True)
-
-    for col in ['error_sample', 'error_nearby', 'polytope_width', 'integral']:
-        plt.hist(df_results[col], 50)
-        plt.title(col)
-        plt.savefig(target_dir / f'{col}_hist.png')
-        plt.close()
 
 
 def plot_tracked_widths(experiments: dict[str, str]):

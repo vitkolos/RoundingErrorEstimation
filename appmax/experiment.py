@@ -238,7 +238,11 @@ def load_batch_results(experiment_path: Path | str, run_id: str) -> list[dict]:
     directory = Path(experiment_path) / run_id
     results = [torch.load(f) for f in directory.glob('point_*.pt')]
     results.sort(key=lambda x: x['sample_index'])
-    return results
+
+    if len(results) > 0:
+        return results
+    else:
+        raise RuntimeError(f'batch results not found in {directory}')
 
 
 def single(
