@@ -1,6 +1,7 @@
 from pathlib import Path
 import typing
 import re
+import collections
 
 import click
 import numpy as np
@@ -24,24 +25,22 @@ rng = np.random.default_rng(SEED)
 @click.argument('visualization')
 @click.argument('dataset')
 @click.argument('run-ids', default=['run'], nargs=-1)
-def main(visualization, dataset, run_ids):
+@click.option('--plot-only', is_flag=True)
+def main(visualization, dataset, run_ids, plot_only):
     bundle = appmax.applications.DataBundle(dataset)
     error_scaling = bundle.data_split.metadata.error_scaling
     dataset_path = EXPERIMENTS_DIR / dataset
 
     match visualization.lower():
         case 'comparison':
-            table = compare_results(dataset_path, run_ids, error_scaling)
-
-            with open(dataset_path / 'comparison.tex', 'w') as f:
-                f.write(table.to_latex())
-
-            with open(dataset_path / 'comparison.html', 'w') as f:
-                f.write(wrap_html_tables([table.to_html()]))
+            compare_results(dataset_path, run_ids, error_scaling)
 
         case 'cardinalities':
-            # evaluate_subsets(dataset_path, run_ids[0], error_scaling)
-            plot_subsets(dataset_path, run_ids[0])
+            for run_id in run_ids:
+                if not plot_only:
+                    evaluate_subsets(dataset_path, run_id, error_scaling)
+
+                plot_subsets(dataset_path, run_id)
 
         # ---
 
@@ -72,7 +71,27 @@ def main(visualization, dataset, run_ids):
                 f.write(wrap_html_tables(tables, into_one=False))
 
 
+TEX_ALIASES = {
+    'sample_max': r'E_T',
+    'sample_mean': r'\overline{E_T}',
+    'nearby_max': r'E_{\Xi_T}',
+    'nearby_mean': r'\overline{E_{\Xi_T}}',
+    'nearby_weighted_sum': r'\overline{E}^{\tilde d}_{\Xi_T}',
+    'integral_divided_sum': r'\overline{E}^{\tilde d}_{\Xi_T^E}',
+    'error_sample': r'E(x)',
+    'error_nearby': r'E_{\Xi_x}',
+    'polytope_width': r'\tilde d_n(\Xi_x)',
+    'weight': r'\frac{\tilde d_n(\Xi_x)}{S}',
+    'nearby_weighted': r'\frac{\tilde d_n(\Xi_x)}{S} E_{\Xi_x}',
+    'integral_width': r'\tilde d_{n+1}(\Xi_x^E)',
+    'integral_divided': r'\tilde d_{n+1}(\Xi_x^E)\over S',
+    'union_mean': r'\overline{E}_{\overline{\Xi}_T}',
+    'union_weighted_sum': r'\overline{E}^{\tilde d}_{\overline{\Xi}_T}',
+}
+
+
 def load_df_results(experiment_path: Path, run_id: str) -> pd.DataFrame:
+    """loads the plain results (experiment output) into a DataFrame"""
     match LOAD_MODE:
         case 'csv':
             df = pd.read_csv(experiment_path / f'{run_id}_results.csv', index_col=0)
@@ -87,6 +106,7 @@ def load_df_results(experiment_path: Path, run_id: str) -> pd.DataFrame:
 
 
 def extract_metrics(df_results: pd.DataFrame):
+    """extracts our metrics from a DataFrame containing plain results"""
     described = appmax.experiment.describe(df_results)
     return {
         'sample_max': described.loc['max', 'error_sample'],
@@ -100,7 +120,27 @@ def extract_metrics(df_results: pd.DataFrame):
     }
 
 
-def compare_results(experiment_path: Path, run_ids: list[str], error_scaling: float, aliases: dict[str, str] = {}) -> pd.DataFrame:
+def wrap_html_tables(tables, into_one=True):
+    """wraps HTML tables so that the output looks as a nice webpage (which supports KaTeX)"""
+    html = ''.join(tables)
+
+    if into_one:
+        html = '<table>' + re.sub(r'</?table.*?>', '', html) + '</table>'
+
+    for column, alias in TEX_ALIASES.items():
+        html = html.replace(f'>{column}</th>', f'>\\( {alias} \\)<small>{column.replace('_', ' ')}</small></th>')
+
+    style = 'body{font-family:sans-serif} table{border-collapse: collapse;} td,th{padding:0.5rem 1rem;} th{text-align:right} th:not(:first-child){vertical-align:bottom; text-align:left} small{display:block; margin-top:0.5rem}'
+    katex = """
+        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.47/dist/katex.min.css" integrity="sha384-nH0MfJ44wi1dd7w6jinlyBgljjS8EJAh2JBoRad8a3VDw2K69vfaaqm4WnR+gXtA" crossorigin="anonymous">
+        <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.47/dist/katex.min.js" integrity="sha384-CwjPRVHTvLiMBFjEoij+QZViMV5rhTOIp7CJzl24JEqpRDA1sJFHVXXLURktbYYp" crossorigin="anonymous"></script>
+        <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.47/dist/contrib/auto-render.min.js" integrity="sha384-bjyGPfbij8/NDKJhSGZNP/khQVgtHUE5exjm4Ydllo42FwIgYsdLO2lXGmRBf5Mz" crossorigin="anonymous" onload="renderMathInElement(document.body);"></script>
+    """
+    return f'<!doctype html><html><head>{katex}<style>{style}</style></head><body>{html}</body></html>'
+
+
+def compare_results(experiment_path: Path, run_ids: list[str], error_scaling: float, aliases: dict[str, str] = {}):
+    """writes nice tables containing the metrics and comparing them between runs"""
     dfs = {run_id: load_df_results(experiment_path, run_id) for run_id in run_ids}
 
     def analyze(name: str, df_results: pd.DataFrame):
@@ -113,13 +153,25 @@ def compare_results(experiment_path: Path, run_ids: list[str], error_scaling: fl
     df = pd.DataFrame(analyze(*item) for item in dfs.items())
     df = df.set_index('run')
     df.index.name = None
-    return df
+
+    with open(experiment_path / 'comparison.tex', 'w') as f:
+        f.write(df.to_latex())
+
+    with open(experiment_path / 'comparison.html', 'w') as f:
+        f.write(wrap_html_tables([df.to_html()]))
 
 
 COL_SIZE = ('size', 'exact')
 
 
 def evaluate_subsets(experiment_path: Path, run_id: str, error_scaling: float):
+    """
+    1. iterates over different cardinalities,
+    2. chooses NUM_SUBSETS random subsets of a given cardinality,
+    3. computes our metrics,
+    4. finds the mean and std,
+    5. stores the results in a csv file
+    """
     NUM_SUBSETS = 100
     STEP = 50
     START = STEP
@@ -140,32 +192,64 @@ def evaluate_subsets(experiment_path: Path, run_id: str, error_scaling: float):
         stats_compact.loc[COL_SIZE] = size
         stats_for_sizes.append(stats_compact)
 
-    pd.DataFrame(stats_for_sizes).to_csv(experiment_path / f'{run_id}_subsets.csv')
+    subsets_dir = experiment_path / f'{run_id}_outputs' / 'subsets'
+    subsets_dir.mkdir(parents=True, exist_ok=True)
+    pd.DataFrame(stats_for_sizes).to_csv(subsets_dir / 'subsets.csv')
 
 
 def plot_subsets(experiment_path: Path, run_id: str):
-    df = pd.read_csv(experiment_path / f'{run_id}_subsets.csv', header=[0, 1], index_col=0)
-    columns = df.columns.get_level_values(0).unique().drop('size')
+    """plots the mean and std for different cardinalities (as computed by evaluate_subsets), groups metrics with similar properties"""
+    subsets_dir = experiment_path / f'{run_id}_outputs' / 'subsets'
+    df = pd.read_csv(subsets_dir / 'subsets.csv', header=[0, 1], index_col=0)
 
-    with PdfPages(experiment_path / f'{run_id}_subsets.pdf') as pdf:
+    columns = df.columns.get_level_values(0).unique().drop('size')
+    grouped_columns = collections.defaultdict(list)
+
+    for column in columns:
+        match column.split('_'):
+            case [_, 'max']:
+                grouped_columns['max'].append(column)
+            case ['integral', *_]:
+                grouped_columns['integral'].append(column)
+            case _:
+                grouped_columns['weighted, mean'].append(column)
+
+    with PdfPages(subsets_dir / 'bundle.pdf') as pdf:
         # plt.rcParams['text.usetex'] = True
 
-        for column in columns:
-            size = df.loc[:, COL_SIZE]
-            mean = df.loc[:, (column, 'mean')]
-            std = df.loc[:, (column, 'std')]
+        for title, group in grouped_columns.items():
             fig, ax = plt.subplots()
-            plt.plot(size, mean, '.-')
-            plt.fill_between(size, mean-std, mean+std, alpha=0.2)
-            title = column.replace('_', ' ')
+            legend = []
 
-            if tex := TEX_ALIASES.get(column):
-                title = f'${tex}$ {title}'
+            for column in group:
+                size = df.loc[:, COL_SIZE]
+                mean = df.loc[:, (column, 'mean')]
+                std = df.loc[:, (column, 'std')]
+                label = column.replace('_', ' ')
+
+                if tex := TEX_ALIASES.get(column):
+                    label = f'${tex}$ {label}'
+
+                handle, = plt.plot(size, mean, '.-')
+                plt.fill_between(size, mean-std, mean+std, alpha=0.2)
+                legend.append({'label': label, 'handle': handle, 'last_value': mean.iloc[-1]})
 
             plt.title(title)
+            legend.sort(key=lambda item: item['last_value'], reverse=True)
+
+            def print_legend(legend, loc='best'):
+                return plt.legend([item['handle'] for item in legend], [item['label'] for item in legend], loc=loc)
+
+            if len(legend) > 3:
+                ax.add_artist(print_legend(legend[:2], 'upper left'))
+                print_legend(legend[2:])
+            else:
+                print_legend(legend)
+
             plt.grid(True, linestyle='--', alpha=0.5)
             ax.set_xlabel('cardinality')
             ax.set_ylabel(r'metric ($\mu\pm\sigma$)')
+            plt.savefig(subsets_dir / f'{title}.svg', format='svg', bbox_inches='tight')
             pdf.savefig()
             plt.close()
 
@@ -200,43 +284,6 @@ def list_points(experiment_path: Path, run_id: str, error_scaling: float, indice
     unscaled_text = '' if error_scaling == 1.0 else f'(unscaled = multiplied by {error_scaling:.6f} to get the original units)'
     header = f'<p><b>{experiment_path.name}: {run_name}</b> {unscaled_text}</p><p>\\( S = {s_tex} = \\) {weights_sum:.6f}</p>'
     return header + styled_df.to_html()
-
-
-TEX_ALIASES = {
-    'sample_max': r'E_T',
-    'sample_mean': r'\overline{E_T}',
-    'nearby_max': r'E_{\Xi_T}',
-    'nearby_mean': r'\overline{E_{\Xi_T}}',
-    'nearby_weighted_sum': r'\overline{E}^{\tilde d}_{\Xi_T}',
-    'integral_divided_sum': r'\overline{E}^{\tilde d}_{\Xi_T^E}',
-    'error_sample': r'E(x)',
-    'error_nearby': r'E_{\Xi_x}',
-    'polytope_width': r'\tilde d_n(\Xi_x)',
-    'weight': r'\frac{\tilde d_n(\Xi_x)}{S}',
-    'nearby_weighted': r'\frac{\tilde d_n(\Xi_x)}{S} E_{\Xi_x}',
-    'integral_width': r'\tilde d_{n+1}(\Xi_x^E)',
-    'integral_divided': r'\tilde d_{n+1}(\Xi_x^E)\over S',
-    'union_mean': r'\overline{E}_{\overline{\Xi}_T}',
-    'union_weighted_sum': r'\overline{E}^{\tilde d}_{\overline{\Xi}_T}',
-}
-
-
-def wrap_html_tables(tables, into_one=True):
-    html = ''.join(tables)
-
-    if into_one:
-        html = '<table>' + re.sub(r'</?table.*?>', '', html) + '</table>'
-
-    for column, alias in TEX_ALIASES.items():
-        html = html.replace(f'>{column}</th>', f'>\\( {alias} \\)<small>{column.replace('_', ' ')}</small></th>')
-
-    style = 'body{font-family:sans-serif} table{border-collapse: collapse;} td,th{padding:0.5rem 1rem;} th{text-align:right} th:not(:first-child){vertical-align:bottom; text-align:left} small{display:block; margin-top:0.5rem}'
-    katex = """
-        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.47/dist/katex.min.css" integrity="sha384-nH0MfJ44wi1dd7w6jinlyBgljjS8EJAh2JBoRad8a3VDw2K69vfaaqm4WnR+gXtA" crossorigin="anonymous">
-        <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.47/dist/katex.min.js" integrity="sha384-CwjPRVHTvLiMBFjEoij+QZViMV5rhTOIp7CJzl24JEqpRDA1sJFHVXXLURktbYYp" crossorigin="anonymous"></script>
-        <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.47/dist/contrib/auto-render.min.js" integrity="sha384-bjyGPfbij8/NDKJhSGZNP/khQVgtHUE5exjm4Ydllo42FwIgYsdLO2lXGmRBf5Mz" crossorigin="anonymous" onload="renderMathInElement(document.body);"></script>
-    """
-    return f'<!doctype html><html><head>{katex}<style>{style}</style></head><body>{html}</body></html>'
 
 
 def plot_results(experiment_path: Path, run_id: str):
