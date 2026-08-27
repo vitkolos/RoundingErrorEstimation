@@ -32,7 +32,7 @@ def main(visualization, dataset, run_ids, plot_only):
     error_scaling = bundle.data_split.metadata.error_scaling
     dataset_path = EXPERIMENTS_DIR / dataset
 
-    match visualization.lower():
+    match visualization:
         case 'comparison':
             compare_results(dataset_path, run_ids, error_scaling)
 
@@ -44,10 +44,16 @@ def main(visualization, dataset, run_ids, plot_only):
                 plot_subsets(dataset_path, run_id)
 
         case 'input-face':
-            show_input_faces(dataset_path, run_ids[0])
+            for run_id in run_ids:
+                show_input_faces(dataset_path, run_id)
 
         case 'histograms':
-            plot_histograms(dataset_path, run_ids[0])
+            for run_id in run_ids:
+                plot_histograms(dataset_path, run_id)
+
+        case 'union-combined':
+            for run_id in run_ids:
+                plot_union_combined(dataset_path, run_id)
 
         # ---
 
@@ -224,14 +230,14 @@ def plot_subsets(experiment_path: Path, run_id: str):
                 if tex := TEX_ALIASES.get(column):
                     label = f'${tex}$ {label}'
 
-                handle, = plt.plot(size, mean, '.-')
-                plt.fill_between(size, mean-std, mean+std, alpha=0.2)
+                handle, = ax.plot(size, mean, '.-')
+                ax.fill_between(size, mean-std, mean+std, alpha=0.2)
                 legend.append({'label': label, 'handle': handle, 'last_value': mean.iloc[-1]})
 
             legend.sort(key=lambda item: item['last_value'], reverse=True)
 
             def print_legend(legend, loc='best'):
-                return plt.legend([item['handle'] for item in legend], [item['label'] for item in legend], loc=loc)
+                return ax.legend([item['handle'] for item in legend], [item['label'] for item in legend], loc=loc)
 
             if len(legend) > 3:
                 ax.add_artist(print_legend(legend[:2], 'upper left'))
@@ -239,12 +245,12 @@ def plot_subsets(experiment_path: Path, run_id: str):
             else:
                 print_legend(legend)
 
-            plt.grid(True, linestyle='--', alpha=0.5)
+            ax.grid(True, linestyle='--', alpha=0.5)
             ax.set_xlabel('cardinality')
             ax.set_ylabel(r'metric ($\mu\pm\sigma$)')
-            plt.savefig(subsets_dir / f'{title}.svg', bbox_inches='tight')
-            pdf.savefig()
-            plt.close()
+            fig.savefig(subsets_dir / f'{title}.svg', bbox_inches='tight')
+            pdf.savefig(fig)
+            plt.close(fig)
 
 
 def show_input_faces(experiment_path: Path, run_id: str):
@@ -274,9 +280,59 @@ def plot_histograms(experiment_path: Path, run_id: str):
     target_dir.mkdir(parents=True, exist_ok=True)
 
     for col in df_results.columns:
-        plt.hist(df_results[col], bins='auto', histtype='stepfilled')
-        plt.savefig(target_dir / f'{col}.svg', bbox_inches='tight')
-        plt.close()
+        fig, ax = plt.subplots()
+        ax.set_xlabel(col.replace('_', ' '))
+        ax.set_ylabel('frequency')
+        ax.hist(df_results[col], bins='auto', histtype='stepfilled')
+        fig.savefig(target_dir / f'{col}.svg', bbox_inches='tight')
+        plt.close(fig)
+
+
+def plot_union_combined(experiment_path: Path, run_id: str):
+    results = appmax.experiment.load_batch_results(experiment_path, run_id)
+
+    target_dir = experiment_path / f'{run_id}_outputs' / 'union'
+    target_dir.mkdir(parents=True, exist_ok=True)
+
+    widths: list[float] = []
+    maxima_jagged: list[list[float]] = []
+    max_len = 0
+
+    for item in results:
+        progress = item['result_nearby']['union']['progress']
+        widths.append(item['result_nearby']['union']['width'])
+        maxima = []
+        last_n = 0
+        maximum = progress[0][1]
+
+        for n, fun in progress:
+            maximum = max(maximum, fun)
+
+            if n > last_n:
+                # new polytope found
+                maxima.append(maximum)
+
+            last_n = n
+
+        maxima_jagged.append(maxima)
+        max_len = max(max_len, len(maxima))
+
+    for maxima in maxima_jagged:
+        maxima.extend([maxima[-1]] * (max_len - len(maxima)))
+
+    maxima = np.array(maxima_jagged)
+    means = maxima.mean(axis=0)
+    weighted = np.average(maxima, axis=0, weights=widths)
+    ns = range(1, len(means)+1)
+
+    fig, ax = plt.subplots()
+    ax.set_xlabel('discovered subpolytopes')
+    ax.set_ylabel('mean maximum error')
+    ax.plot(ns, weighted, '.-', label=f'${TEX_ALIASES['union_weighted_sum']}$ weighted mean')
+    ax.plot(ns, means, '.-', label=f'${TEX_ALIASES['union_mean']}$ arithmetic mean')
+    ax.legend()
+    fig.savefig(target_dir / f'combined.svg', bbox_inches='tight')
+    plt.close(fig)
 
 
 # ---
