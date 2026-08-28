@@ -22,15 +22,18 @@ def main(dataset, bits):
     model_approx.round(bits=bits)
 
     if dataset == 'mnist':
-        print('reference solution (using torch.nn.Module.half, considering only target=0)')
+        print('mnist: reference solution (using torch.nn.Module.half, considering only target=0)')
         model_approx = bundle.load_model()
         model_approx.round(bits=16, qt='torch')
         selected = data_test.targets == 0  # selects only this class
         indices = torch.nonzero(selected, as_tuple=True)[0].tolist()
         data_test = torch.utils.data.Subset(data_test, indices)
         model.layers, model_approx.layers = model.network, model_approx.network
+    else:
+        print(f'{dataset}: {bits}bit')
 
     find_intervals(data_test, model.layers, model_approx.layers)
+    print()
 
 
 def find_intervals(dataset: appmax.trainable.Dataset, layers: torch.nn.Sequential, layers_approx: torch.nn.Sequential):
@@ -90,6 +93,7 @@ class Message:
 
 
 def input_ab_message(dataset: appmax.trainable.Dataset):
+    """finds ranges (intervals) of the input neurons"""
     message = Message(shape=(1, *dataset[0][0].shape))
     test_data = torch.utils.data.DataLoader(dataset, batch_size=BATCH_SIZE)
 
@@ -103,6 +107,7 @@ def input_ab_message(dataset: appmax.trainable.Dataset):
 
 
 def get_fun(layer: nn.Module):
+    """for the given module, return a function with the required interface (input, weight, bias? -> output)"""
     match layer:
         case nn.Linear():
             return F.linear
@@ -119,6 +124,7 @@ def n_relu(w):
 
 
 def layer_ab(layer: nn.Module, message: Message):
+    """current layer modifies the intervals of the inputs of the next layer"""
     assert isinstance(layer.weight, torch.Tensor)
     assert layer.bias is None or isinstance(layer.bias, torch.Tensor)
 
@@ -135,6 +141,7 @@ def layer_ab(layer: nn.Module, message: Message):
 
 
 def layer_alpha_beta(layer: nn.Module, layer_approx: nn.Module, m: Message):
+    """finds the error bounds of the neurons in the current layer"""
     if type(layer) is not type(layer_approx):
         raise ValueError('layer_approx has a different type than layer')
 
@@ -158,6 +165,7 @@ def layer_alpha_beta(layer: nn.Module, layer_approx: nn.Module, m: Message):
 
 
 def bn1d_to_linear(layer: nn.BatchNorm1d) -> nn.Linear:
+    """convert a BatchNorm1d layer to a Linear layer, so that the layer has only two sets of parameters (weight and bias)"""
     # old parameters
     gamma = layer.weight
     beta = layer.bias
