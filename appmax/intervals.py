@@ -23,7 +23,7 @@ def main(dataset, bits):
     model_approx.round(bits=bits)
 
     if dataset == 'mnist':
-        print('reference solution (torch.nn.Module.half, considering only target=0)')
+        print('reference solution (using torch.nn.Module.half, considering only target=0)')
         model_approx = bundle.load_model()
         model_approx.round(bits=16, qt='torch')
         selected = data_test.targets == 0  # selects only this class
@@ -109,6 +109,9 @@ def layer_ab(layer: nn.Module, message: Message):
 
 
 def layer_alpha_beta(layer: nn.Module, layer_approx: nn.Module, m: Message):
+    if type(layer) is not type(layer_approx):
+        raise ValueError('layer_approx has a different type than layer')
+
     weight_tilde = layer_approx.weight
     bias_tilde = layer_approx.bias
     weight_delta = weight_tilde - layer.weight
@@ -133,6 +136,10 @@ def find_intervals(dataset: appmax.trainable.Dataset, layers: torch.nn.Sequentia
         message = input_ab_message(dataset)
 
         for i, (layer, layer_approx) in enumerate(zip(layers, layers_approx)):
+            if type(layer) is nn.BatchNorm1d:
+                layer = bn1d_to_linear(layer)
+                layer_approx = bn1d_to_linear(layer_approx)
+
             match layer:
                 case nn.Dropout():
                     pass
@@ -149,6 +156,25 @@ def find_intervals(dataset: appmax.trainable.Dataset, layers: torch.nn.Sequentia
                         f"intervals.find_intervals is not implemented for '{type(layer).__name__}' object")
 
         message.report(i)
+
+
+def bn1d_to_linear(layer: nn.BatchNorm1d) -> nn.Linear:
+    # old parameters
+    gamma = layer.weight
+    beta = layer.bias
+    mu = layer.running_mean
+    var = layer.running_var
+    eps = layer.eps
+
+    # new parameters
+    w = gamma / torch.sqrt(var + eps)
+    b = beta - mu * w
+
+    # new layer
+    linear = nn.Linear(layer.num_features, layer.num_features)
+    linear.weight.data = torch.diag(w)
+    linear.bias.data = b
+    return linear.eval()
 
 
 if __name__ == '__main__':
