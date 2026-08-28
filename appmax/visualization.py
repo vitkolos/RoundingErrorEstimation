@@ -33,6 +33,10 @@ def main(visualization, dataset, run_ids, plot_only):
     dataset_path = EXPERIMENTS_DIR / dataset
 
     match visualization:
+        case 'check-2000':
+            for run_id in run_ids:
+                check_len(dataset_path, run_id, desired_len=2000)
+
         case 'comparison':
             compare_results(dataset_path, run_ids, error_scaling)
 
@@ -340,6 +344,13 @@ def plot_union_combined(experiment_path: Path, run_id: str, error_scaling: float
     ax.legend()
     fig.savefig(target_dir / f'combined.svg', bbox_inches='tight')
     plt.close(fig)
+
+
+def check_len(experiment_path: Path, run_id: str, desired_len: int):
+    results = appmax.experiment.load_batch_results(experiment_path, run_id)
+
+    if len(results) != desired_len:
+        raise ValueError(f'run {experiment_path.name}/{run_id} does not contain {desired_len} items')
 
 
 # ---

@@ -242,7 +242,7 @@ def load_batch_results(experiment_path: Path | str, run_id: str) -> list[dict]:
     if len(results) > 0:
         return results
     else:
-        raise RuntimeError(f'batch results not found in {directory}')
+        raise ValueError(f'batch results not found in {directory}')
 
 
 def single(
