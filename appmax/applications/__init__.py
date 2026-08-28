@@ -1,6 +1,6 @@
 import torch
 
-from appmax.applications import california_housing, year_prediction, utkface
+from appmax.applications import california_housing, year_prediction, utkface, mnist
 import appmax.trainable
 
 
@@ -22,6 +22,10 @@ class DataBundle:
                 self.model_file = "models/utkface_smaller.pt"
                 self.model_class = utkface.FaceConvNetSmaller
                 self.data_split = utkface.UTKFaceSplit()
+            case 'mnist':
+                self.model_file = "models/mnist_dense_net.pt"
+                self.model_class = mnist.SmallDenseNetLegacy
+                self.data_split = mnist.MnistSplit()
             case _:
                 raise NotImplementedError(f"'{dataset}' dataset is not available")
 

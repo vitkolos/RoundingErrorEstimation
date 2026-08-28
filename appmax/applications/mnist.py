@@ -1,10 +1,11 @@
 import torch
+from torch import nn
 import torchvision
 import torchmetrics
-from appmax.trainable import nn, BaseModel, TrainableModel, DataSplit
+import appmax.trainable
 
 
-class MnistSplit(DataSplit):
+class MnistSplit(appmax.trainable.DataSplit):
     def __init__(self):
         transform = torchvision.transforms.Compose([
             torchvision.transforms.ToTensor(),
@@ -14,10 +15,11 @@ class MnistSplit(DataSplit):
         train_dev = torchvision.datasets.MNIST(train=True, **params)
         self.train, self.dev = torch.utils.data.random_split(train_dev, [4/5, 1/5])
         self.test = torchvision.datasets.MNIST(train=False, **params)
-        self.bounds = [(-0.5, 3.0)] * (28*28)
+        bounds = [(-0.5, 3.0)] * (28*28)
+        self.metadata = appmax.trainable.Metadata(bounds=bounds)
 
 
-class SmallDenseNet(TrainableModel):
+class SmallDenseNet(appmax.trainable.TrainableModel):
     def __init__(self):
         super().__init__(
             nn.Sequential(
@@ -41,7 +43,7 @@ class SmallDenseNet(TrainableModel):
         return metric_dev > 0.9
 
 
-class SmallDenseNetLegacy(BaseModel):
+class SmallDenseNetLegacy(appmax.trainable.BaseModel):
     def __init__(self):
         super().__init__()
         self.network = nn.Sequential(
@@ -59,7 +61,7 @@ class SmallDenseNetLegacy(BaseModel):
         return self.network(x)
 
 
-class SmallConvNetLegacy(BaseModel):
+class SmallConvNetLegacy(appmax.trainable.BaseModel):
     def __init__(self):
         super().__init__()
         self.network = nn.Sequential(
