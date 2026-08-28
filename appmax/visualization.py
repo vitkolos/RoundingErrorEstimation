@@ -53,7 +53,7 @@ def main(visualization, dataset, run_ids, plot_only):
 
         case 'union-combined':
             for run_id in run_ids:
-                plot_union_combined(dataset_path, run_id)
+                plot_union_combined(dataset_path, run_id, error_scaling)
 
         # ---
 
@@ -88,6 +88,10 @@ TEX_ALIASES = {
     'union_mean': r'\overline{E}_{\overline{\Xi}_T}',
     'union_weighted_sum': r'\overline{E}^{\tilde d}_{\overline{\Xi}_T}',
 }
+
+
+def to_display_label(label: str) -> str:
+    return label.replace('_', ' ')
 
 
 def load_df_results(experiment_path: Path, run_id: str) -> pd.DataFrame:
@@ -128,7 +132,7 @@ def wrap_html_tables(tables, into_one=True):
         html = '<table>' + re.sub(r'</?table.*?>', '', html) + '</table>'
 
     for column, alias in TEX_ALIASES.items():
-        html = html.replace(f'>{column}</th>', f'>\\( {alias} \\)<small>{column.replace('_', ' ')}</small></th>')
+        html = html.replace(f'>{column}</th>', f'>\\( {alias} \\)<small>{to_display_label(column)}</small></th>')
 
     style = 'body{font-family:sans-serif} table{border-collapse: collapse;} td,th{padding:0.5rem 1rem;} th{text-align:right} th:not(:first-child){vertical-align:bottom; text-align:left} small{display:block; margin-top:0.5rem}'
     katex = """
@@ -154,10 +158,13 @@ def compare_results(experiment_path: Path, run_ids: list[str], error_scaling: fl
     df = df.set_index('run')
     df.index.name = None
 
-    with open(experiment_path / 'comparison.tex', 'w') as f:
+    target_dir = experiment_path / 'common_outputs'
+    target_dir.mkdir(parents=True, exist_ok=True)
+
+    with open(target_dir / 'comparison.tex', 'w') as f:
         f.write(df.to_latex())
 
-    with open(experiment_path / 'comparison.html', 'w') as f:
+    with open(target_dir / 'comparison.html', 'w') as f:
         f.write(wrap_html_tables([df.to_html()]))
 
 
@@ -225,7 +232,7 @@ def plot_subsets(experiment_path: Path, run_id: str):
                 size = df.loc[:, COL_SIZE]
                 mean = df.loc[:, (column, 'mean')]
                 std = df.loc[:, (column, 'std')]
-                label = column.replace('_', ' ')
+                label = to_display_label(column)
 
                 if tex := TEX_ALIASES.get(column):
                     label = f'${tex}$ {label}'
@@ -281,14 +288,14 @@ def plot_histograms(experiment_path: Path, run_id: str):
 
     for col in df_results.columns:
         fig, ax = plt.subplots()
-        ax.set_xlabel(col.replace('_', ' '))
+        ax.set_xlabel(to_display_label(col))
         ax.set_ylabel('frequency')
         ax.hist(df_results[col], bins='auto', histtype='stepfilled')
         fig.savefig(target_dir / f'{col}.svg', bbox_inches='tight')
         plt.close(fig)
 
 
-def plot_union_combined(experiment_path: Path, run_id: str):
+def plot_union_combined(experiment_path: Path, run_id: str, error_scaling: float):
     results = appmax.experiment.load_batch_results(experiment_path, run_id)
 
     target_dir = experiment_path / f'{run_id}_outputs' / 'union'
@@ -320,9 +327,9 @@ def plot_union_combined(experiment_path: Path, run_id: str):
     for maxima in maxima_jagged:
         maxima.extend([maxima[-1]] * (max_len - len(maxima)))
 
-    maxima = np.array(maxima_jagged)
-    means = maxima.mean(axis=0)
-    weighted = np.average(maxima, axis=0, weights=widths)
+    maxima_unscaled = np.array(maxima_jagged) * error_scaling
+    means = np.mean(maxima_unscaled, axis=0)
+    weighted = np.average(maxima_unscaled, axis=0, weights=widths)
     ns = range(1, len(means)+1)
 
     fig, ax = plt.subplots()
