@@ -1,5 +1,4 @@
 import click
-import tqdm
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -32,6 +31,33 @@ def main(dataset, bits):
         model.layers, model_approx.layers = model.network, model_approx.network
 
     find_intervals(data_test, model.layers, model_approx.layers)
+
+
+def find_intervals(dataset: appmax.trainable.Dataset, layers: torch.nn.Sequential, layers_approx: torch.nn.Sequential):
+    with torch.no_grad():
+        message = input_ab_message(dataset)
+
+        for i, (layer, layer_approx) in enumerate(zip(layers, layers_approx)):
+            if type(layer) is nn.BatchNorm1d:
+                layer = bn1d_to_linear(layer)
+                layer_approx = bn1d_to_linear(layer_approx)
+
+            match layer:
+                case nn.Dropout():
+                    pass
+                case nn.Flatten():
+                    message = message.apply_special(layer)
+                case nn.ReLU() | nn.MaxPool2d():
+                    message = message.apply_special(layer)
+                    message.report(i)
+                case nn.Linear() | nn.Conv2d():
+                    message = layer_ab(layer, message)
+                    message = layer_alpha_beta(layer, layer_approx, message)
+                case _:
+                    raise NotImplementedError(
+                        f"intervals.find_intervals is not implemented for '{type(layer).__name__}' object")
+
+        message.report(i)
 
 
 class Message:
@@ -129,33 +155,6 @@ def layer_alpha_beta(layer: nn.Module, layer_approx: nn.Module, m: Message):
 
     m.alpha, m.beta = alpha_new, beta_new
     return m
-
-
-def find_intervals(dataset: appmax.trainable.Dataset, layers: torch.nn.Sequential, layers_approx: torch.nn.Sequential):
-    with torch.no_grad():
-        message = input_ab_message(dataset)
-
-        for i, (layer, layer_approx) in enumerate(zip(layers, layers_approx)):
-            if type(layer) is nn.BatchNorm1d:
-                layer = bn1d_to_linear(layer)
-                layer_approx = bn1d_to_linear(layer_approx)
-
-            match layer:
-                case nn.Dropout():
-                    pass
-                case nn.Flatten():
-                    message = message.apply_special(layer)
-                case nn.ReLU() | nn.MaxPool2d():
-                    message = message.apply_special(layer)
-                    message.report(i)
-                case nn.Linear() | nn.Conv2d():
-                    message = layer_ab(layer, message)
-                    message = layer_alpha_beta(layer, layer_approx, message)
-                case _:
-                    raise NotImplementedError(
-                        f"intervals.find_intervals is not implemented for '{type(layer).__name__}' object")
-
-        message.report(i)
 
 
 def bn1d_to_linear(layer: nn.BatchNorm1d) -> nn.Linear:
