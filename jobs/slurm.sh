@@ -10,11 +10,11 @@
 
 # to run: sbatch RoundingErrorEsimation/jobs/slurm.sh
 
-BITS=12
-START=$SLURM_ARRAY_TASK_ID
-END=$(( START + 167 ))
-RANGE_ARG="${START}:${END}"
+bits=12
+start=$SLURM_ARRAY_TASK_ID
+end=$(( start + 167 ))
+range_arg="${start}:${end}"
 
 cd RoundingErrorEstimation
 . .venv/bin/activate
-python -m appmax batch utkface ${BITS}bit -b ${BITS} -s gurobi-barrier -i $RANGE_ARG -j 21
+python -m appmax batch utkface ${bits}bit -b ${bits} -s gurobi-barrier -i $range_arg -j 21

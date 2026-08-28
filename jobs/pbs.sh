@@ -1,10 +1,10 @@
 #!/bin/bash
 
-# to run (for 8-bit): qsub -v BITS=8 RoundingErrorEsimation/jobs/pbs.sh
+# run like this: qsub -v bits=6 RoundingErrorEsimation/jobs/pbs.sh
 
 #PBS -N rnderr
-#PBS -o logs/job_^array_index^.out
-#PBS -e logs/job_^array_index^.err
+#PBS -o logs/rnderr/
+#PBS -e logs/rnderr/
 
 # year: 2gb per job
 # utkface: 10gb per job
@@ -15,12 +15,12 @@
 # h:mm:ss
 #PBS -l walltime=23:00:00
 
-# 10 at once (we have 16 licenses), step 16 (= JOBS)
-#PBS -J 0-1999:16%10
-JOBS=16
-START=$PBS_ARRAY_INDEX
-END=$(( START + JOBS ))
-RANGE_ARG="${START}:${END}"
+# 8 at once (we have 16 licenses), step 16 (= jobs)
+#PBS -J 0-1999:16%8
+jobs=16
+start=$PBS_ARRAY_INDEX
+end=$(( start + jobs ))
+range_arg="${start}:${end}"
 
 cd ${PBS_O_WORKDIR}/RoundingErrorEstimation
 
@@ -32,6 +32,4 @@ source .venv/bin/activate
 
 export GRB_LICENSE_FILE=${PBS_O_WORKDIR}/gurobi.lic
 
-# python -m appmax batch california ${BITS}bit -b ${BITS} -s gurobi -i $RANGE_ARG -j $JOBS
-# python -m appmax batch year ${BITS}bit -b ${BITS} -s gurobi -i $RANGE_ARG -j $JOBS
-python -m appmax batch utkface ${BITS}bit -b ${BITS} -s gurobi-barrier -i $RANGE_ARG -j $JOBS
+python -m appmax batch utkface ${bits}bit -b ${bits} -s gurobi-barrier -i $range_arg -j $jobs

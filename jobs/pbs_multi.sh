@@ -1,8 +1,10 @@
 #!/bin/bash
 
-# to run: qsub RoundingErrorEsimation/jobs/pbs_multi.sh
+# run like this: qsub -v dataset=year RoundingErrorEsimation/jobs/pbs_multi.sh
 
 #PBS -N rnderr_multi
+#PBS -o logs/rnderr_multi/
+#PBS -e logs/rnderr_multi/
 
 # year: 32 cpus, 34gb
 #PBS -l select=1:ncpus=32:mem=40gb:scratch_local=40gb
@@ -11,7 +13,6 @@
 # california: 0.5*3 hours
 # year: 2*3 hours
 #PBS -l walltime=6:00:00
-DATASET="year"
 
 cd ${PBS_O_WORKDIR}/RoundingErrorEstimation
 
@@ -23,11 +24,11 @@ source .venv/bin/activate
 
 export GRB_LICENSE_FILE=${PBS_O_WORKDIR}/gurobi.lic
 
-ARGS="-i 0:2000 -s gurobi -j 32"
+args="-i 0:2000 -s gurobi -j 32"
 
-python -m appmax batch $DATASET 4bit -b 4 $ARGS
-python -m appmax batch $DATASET 6bit -b 6 $ARGS
-python -m appmax batch $DATASET 8bit -b 8 $ARGS
+python -m appmax batch $dataset 4bit -b 4 $args
+python -m appmax batch $dataset 6bit -b 6 $args
+python -m appmax batch $dataset 8bit -b 8 $args
 
-# cd ~/RoundingErrorEstimation/experiments/year
-# zip -rq ~/results/year_batch.zip 4bit 6bit 8bit
+# cd ~/RoundingErrorEstimation/experiments
+# zip -rq ~/results/combined.zip california/*bit_multi year/*bit_multi utkface/*bit_new
