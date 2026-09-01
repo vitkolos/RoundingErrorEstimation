@@ -6,7 +6,7 @@
 #PBS -o logs/rnderr_multi/
 #PBS -e logs/rnderr_multi/
 
-# year: 32 cpus, 34gb
+# year: 32 cpus, 40gb
 #PBS -l select=1:ncpus=32:mem=40gb:scratch_local=40gb
 
 # h:mm:ss

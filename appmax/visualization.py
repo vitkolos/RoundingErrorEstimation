@@ -294,7 +294,26 @@ def plot_histograms(experiment_path: Path, run_id: str):
         fig, ax = plt.subplots()
         ax.set_xlabel(to_display_label(col))
         ax.set_ylabel('frequency')
-        ax.hist(df_results[col], bins='auto', histtype='stepfilled')
+        data = df_results[col]
+
+        # we remove leading and trailing bins with counts 0 or 1
+        counts, bin_edges = np.histogram(df_results[col], bins='auto')
+        bins_gt_one = np.flatnonzero(counts > 1)
+        first_gt_one = bins_gt_one.min()
+        last_gt_one = bins_gt_one.max()
+        limit_lower = bin_edges[first_gt_one]
+        limit_upper = bin_edges[last_gt_one+1]
+        data = np.clip(data, limit_lower, limit_upper)
+
+        ax.hist(data, bins='auto', histtype='stepfilled')
+        _, _, patches = ax.hist(data, bins='auto', color='none')
+
+        if first_gt_one > 0:
+            patches[0].set_facecolor('red')
+
+        if last_gt_one+2 < len(counts):
+            patches[-1].set_facecolor('red')
+
         fig.savefig(target_dir / f'{col}.svg', bbox_inches='tight')
         plt.close(fig)
 

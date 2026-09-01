@@ -26,4 +26,5 @@ These modules can be run using `uv run -m` or `python -m`.
 
 - `appmax` – the main module
 - `appmax.visualization` – produces charts and tables
+- `appmax.intervals` – reports intervals (see section III)
 - `appmax.trainable` – trains a model

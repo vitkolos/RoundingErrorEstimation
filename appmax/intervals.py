@@ -16,7 +16,7 @@ BATCH_SIZE = 256
 def main(dataset, bits):
     bundle = appmax.applications.DataBundle(dataset)
     data_split = bundle.data_split
-    data_test = data_split.test
+    data_test = torch.utils.data.ConcatDataset([data_split.train, data_split.dev, data_split.test])
     model = bundle.load_model()
     model_approx = bundle.load_model()
     model_approx.round(bits=bits)
@@ -25,9 +25,9 @@ def main(dataset, bits):
         print('mnist: reference solution (using torch.nn.Module.half, considering only target=0)')
         model_approx = bundle.load_model()
         model_approx.round(bits=16, qt='torch')
-        selected = data_test.targets == 0  # selects only this class
+        selected = data_split.test.targets == 0  # selects only this class
         indices = torch.nonzero(selected, as_tuple=True)[0].tolist()
-        data_test = torch.utils.data.Subset(data_test, indices)
+        data_test = torch.utils.data.Subset(data_split.test, indices)
         model.layers, model_approx.layers = model.network, model_approx.network
     else:
         print(f'{dataset}: {bits}bit')

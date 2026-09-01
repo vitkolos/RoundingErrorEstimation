@@ -8,7 +8,7 @@ echo "passing commands to '$prefix'"
 
 california="california 4bit 6bit 8bit"
 year="year 4bit 6bit 8bit"
-utkface="utkface 8bit 12bit"
+utkface="utkface 6bit 8bit 12bit"
 
 for dataset_runs in "$california" "$year" "$utkface"; do
     $prefix check-2000 $dataset_runs

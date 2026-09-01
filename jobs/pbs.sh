@@ -11,7 +11,7 @@
 #PBS -l select=1:ncpus=16:mem=160gb:scratch_local=160gb
 
 # year: 5 minutes
-# utkface: 15 hours
+# utkface: 23 hours
 # h:mm:ss
 #PBS -l walltime=23:00:00
 
