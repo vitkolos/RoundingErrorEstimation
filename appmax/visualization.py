@@ -297,23 +297,24 @@ def plot_histograms(experiment_path: Path, run_id: str):
         data = df_results[col]
 
         # we remove leading and trailing bins with counts 0 or 1
-        counts, bin_edges = np.histogram(df_results[col], bins='auto')
+        counts, bin_edges = np.histogram(data, bins='auto')
         bins_gt_one = np.flatnonzero(counts > 1)
         first_gt_one = bins_gt_one.min()
         last_gt_one = bins_gt_one.max()
         limit_lower = bin_edges[first_gt_one]
         limit_upper = bin_edges[last_gt_one+1]
-        data = np.clip(data, limit_lower, limit_upper)
+        outliers_lower = counts[:first_gt_one].sum()
+        outliers_upper = counts[last_gt_one+1:].sum()
 
-        ax.hist(data, bins='auto', histtype='stepfilled')
-        _, _, patches = ax.hist(data, bins='auto', color='none')
+        if outliers_lower > 0:
+            text = f'there are {outliers_lower} outliers ∈ [{bin_edges[0]:.2f}, {limit_lower:.2f})'
+            fig.text(0.1, 0, text, ha='left', va='top', c='gray')
 
-        if first_gt_one > 0:
-            patches[0].set_facecolor('red')
+        if outliers_upper > 0:
+            text = f'there are {outliers_upper} outliers ∈ ({limit_upper:.2f}, {bin_edges[-1]:.2f}]'
+            fig.text(0.9, 0, text, ha='right', va='top', c='gray')
 
-        if last_gt_one+2 < len(counts):
-            patches[-1].set_facecolor('red')
-
+        ax.hist(data, bins='auto', range=(limit_lower, limit_upper), histtype='stepfilled')
         fig.savefig(target_dir / f'{col}.svg', bbox_inches='tight')
         plt.close(fig)
 
