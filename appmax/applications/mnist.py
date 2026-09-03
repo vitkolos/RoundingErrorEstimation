@@ -15,7 +15,7 @@ class MnistSplit(appmax.trainable.DataSplit):
         train_dev = torchvision.datasets.MNIST(train=True, **params)
         self.train, self.dev = torch.utils.data.random_split(train_dev, [4/5, 1/5])
         self.test = torchvision.datasets.MNIST(train=False, **params)
-        bounds = [(-0.5, 3.0)] * (28*28)
+        bounds = appmax.trainable.Bounds([(-0.5, 3.0)] * (28*28))
         self.metadata = appmax.trainable.Metadata(bounds=bounds)
 
 

@@ -11,64 +11,101 @@ BATCH_SIZE = 256
 
 
 @click.command()
-@click.argument('dataset')
+@click.argument('dataset', default=None)
 @click.option('-b', '--bits', default=8, help='Number of bits used by the quantized network (default: 8).')
 def main(dataset, bits):
-    bundle = appmax.applications.DataBundle(dataset)
+    if dataset is not None:
+        return intervals_wrapper(dataset, bits)
+
+
+def intervals_wrapper(dataset, bits, verbose=True, bundle=None):
+    if bundle is None:
+        bundle = appmax.applications.DataBundle(dataset)
+
     data_split = bundle.data_split
-    data_test = torch.utils.data.ConcatDataset([data_split.train, data_split.dev, data_split.test])
+    input_shape = data_split.test[0][0].shape
+    bounds_ab = torch.tensor(data_split.metadata.bounds.lb).to(dtype=torch.get_default_dtype()), \
+        torch.from_numpy(data_split.metadata.bounds.ub).to(dtype=torch.get_default_dtype())
     model = bundle.load_model()
     model_approx = bundle.load_model()
     model_approx.round(bits=bits)
 
     if dataset == 'mnist':
         print('mnist: reference solution (using torch.nn.Module.half, considering only target=0)')
+        mask = data_split.test.targets == 0  # selects only this class
+        bounds_ab = find_ab_from_dataset(data_split.test, mask)
         model_approx = bundle.load_model()
         model_approx.round(bits=16, qt='torch')
-        selected = data_split.test.targets == 0  # selects only this class
-        indices = torch.nonzero(selected, as_tuple=True)[0].tolist()
-        data_test = torch.utils.data.Subset(data_split.test, indices)
         model.layers, model_approx.layers = model.network, model_approx.network
-    else:
+    elif verbose:
         print(f'{dataset}: {bits}bit')
 
-    find_intervals(data_test, model.layers, model_approx.layers)
-    print()
+    return find_intervals(input_shape, bounds_ab, model.layers, model_approx.layers, verbose)
 
 
-def find_intervals(dataset: appmax.trainable.Dataset, layers: torch.nn.Sequential, layers_approx: torch.nn.Sequential):
-    with torch.no_grad():
-        message = input_ab_message(dataset)
+def find_ab_from_dataset(dataset: appmax.trainable.Dataset, mask: torch.Tensor | None = None) -> tuple[torch.Tensor, torch.Tensor]:
+    if mask is not None:
+        indices = torch.nonzero(mask, as_tuple=True)[0].tolist()
+        dataset = torch.utils.data.Subset(dataset, indices)
 
-        for i, (layer, layer_approx) in enumerate(zip(layers, layers_approx)):
-            if type(layer) is nn.BatchNorm1d:
-                layer = bn1d_to_linear(layer)
-                layer_approx = bn1d_to_linear(layer_approx)
+    loader = torch.utils.data.DataLoader(dataset, batch_size=BATCH_SIZE)
+    shape = (1, *dataset[0][0].shape)
+    a = torch.full(shape, torch.inf)
+    b = torch.full(shape, -torch.inf)
 
-            match layer:
-                case nn.Dropout():
-                    pass
-                case nn.Flatten():
-                    message = message.apply_special(layer)
-                case nn.ReLU() | nn.MaxPool2d():
-                    message = message.apply_special(layer)
-                    message.report(i)
-                case nn.Linear() | nn.Conv2d():
-                    message = layer_ab(layer, message)
-                    message = layer_alpha_beta(layer, layer_approx, message)
-                case _:
-                    raise NotImplementedError(
-                        f"intervals.find_intervals is not implemented for '{type(layer).__name__}' object")
+    for xs, ys in appmax.logger.progress(loader):
+        a_batch, _ = torch.min(xs, dim=0)
+        b_batch, _ = torch.max(xs, dim=0)
+        a = torch.minimum(a, a_batch)
+        b = torch.maximum(b, b_batch)
 
-        message.report(i)
+    return a, b
+
+
+@torch.no_grad()
+def find_intervals(
+    input_shape: torch.Size,
+    bounds_ab: tuple[torch.Tensor, torch.Tensor],
+    layers: torch.nn.Sequential,
+    layers_approx: torch.nn.Sequential,
+    verbose: bool,
+):
+    message = Message(shape=torch.Size([1, *input_shape]), a=bounds_ab[0], b=bounds_ab[1])
+    reports = []
+
+    for i, (layer, layer_approx) in enumerate(zip(layers, layers_approx)):
+        if type(layer) is not type(layer_approx):
+            raise ValueError('layers at the same level have different types')
+
+        if type(layer) is nn.BatchNorm1d and type(layer_approx) is nn.BatchNorm1d:
+            layer = bn1d_to_linear(layer)
+            layer_approx = bn1d_to_linear(layer_approx)
+
+        match layer:
+            case nn.Dropout():
+                pass
+            case nn.Flatten():
+                message = message.apply_special(layer)
+            case nn.ReLU() | nn.MaxPool2d():
+                message = message.apply_special(layer)
+                reports.append(message.report(i, verbose))
+            case nn.Linear() | nn.Conv2d():
+                message = layer_ab(layer, message)
+                message = layer_alpha_beta(layer, layer_approx, message)
+            case _:
+                raise NotImplementedError(
+                    f"intervals.find_intervals is not implemented for '{type(layer).__name__}' object")
+
+    reports.append(message.report(i, verbose))
+    return reports
 
 
 class Message:
-    def __init__(self, shape):
-        self.a = torch.full(shape, torch.inf)
-        self.b = torch.full(shape, -torch.inf)
-        self.a_old = torch.full(shape, torch.inf)
-        self.b_old = torch.full(shape, -torch.inf)
+    def __init__(self, shape: torch.Size, a: torch.Tensor, b: torch.Tensor):
+        self.a = a.reshape(shape)
+        self.b = b.reshape(shape)
+        self.a_old = torch.empty(0)
+        self.b_old = torch.empty(0)
         self.alpha = torch.zeros(shape)
         self.beta = torch.zeros(shape)
         self.input_processed = False
@@ -80,7 +117,7 @@ class Message:
         self.beta = module(self.beta)
         return self
 
-    def report(self, layer):
+    def report(self, layer: int, verbose: bool):
         assert torch.all(self.a <= self.b)
         alpha, beta = self.alpha.flatten(), self.beta.flatten()
         assert torch.all(alpha <= 0)
@@ -88,22 +125,12 @@ class Message:
 
         diff = beta-alpha
         imin, imax = torch.argmin(diff), torch.argmax(diff)
-        print(f'layer {layer}:', f'min [{alpha[imin].item():.4f}, {beta[imin].item():.4f}]',
-              f'max [{alpha[imax].item():.4f}, {beta[imax].item():.4f}]')
 
+        if verbose:
+            print(f'layer {layer}:', f'min [{alpha[imin].item():.4f}, {beta[imin].item():.4f}]',
+                  f'max [{alpha[imax].item():.4f}, {beta[imax].item():.4f}]')
 
-def input_ab_message(dataset: appmax.trainable.Dataset):
-    """finds ranges (intervals) of the input neurons"""
-    message = Message(shape=(1, *dataset[0][0].shape))
-    test_data = torch.utils.data.DataLoader(dataset, batch_size=BATCH_SIZE)
-
-    for xs, ys in appmax.logger.progress(test_data):
-        a_batch, _ = torch.min(xs, dim=0)
-        b_batch, _ = torch.max(xs, dim=0)
-        message.a = torch.minimum(message.a, a_batch)
-        message.b = torch.maximum(message.b, b_batch)
-
-    return message
+        return {'min': (alpha[imin].item(), beta[imin].item()), 'max': (alpha[imax].item(), beta[imax].item())}
 
 
 def get_fun(layer: nn.Module):
@@ -142,8 +169,8 @@ def layer_ab(layer: nn.Module, message: Message):
 
 def layer_alpha_beta(layer: nn.Module, layer_approx: nn.Module, m: Message):
     """finds the error bounds of the neurons in the current layer"""
-    if type(layer) is not type(layer_approx):
-        raise ValueError('layer_approx has a different type than layer')
+    assert isinstance(layer.weight, torch.Tensor) and isinstance(layer.bias, torch.Tensor) \
+        and isinstance(layer_approx.weight, torch.Tensor) and isinstance(layer_approx.bias, torch.Tensor)
 
     weight_tilde = layer_approx.weight
     bias_tilde = layer_approx.bias
@@ -166,6 +193,11 @@ def layer_alpha_beta(layer: nn.Module, layer_approx: nn.Module, m: Message):
 
 def bn1d_to_linear(layer: nn.BatchNorm1d) -> nn.Linear:
     """convert a BatchNorm1d layer to a Linear layer, so that the layer has only two sets of parameters (weight and bias)"""
+    if layer.training:
+        raise RuntimeError('BatchNorm1d layer is in training mode')
+    elif not layer.track_running_stats or layer.running_mean is None or layer.running_var is None:
+        raise NotImplementedError('bn1d_to_linear does not support track_running_stats=False')
+
     # old parameters
     gamma = layer.weight
     beta = layer.bias
