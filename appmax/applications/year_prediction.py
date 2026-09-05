@@ -9,22 +9,23 @@ import appmax.trainable
 DATA_HOME = 'datasets'
 
 
-
 class YearPredictionDataset(appmax.trainable.Dataset):
     """https://web.archive.org/web/20260405131946/https://archive.ics.uci.edu/dataset/203/yearpredictionmsd"""
     # train: first 463,715 examples
     # test: last 51,630 examples
     TD_LEN = 463_715
-    T_LEN = TD_LEN - 10_000
+    D_LEN = 10_000
+    T_LEN = TD_LEN - D_LEN
 
     def __init__(self, metadata: appmax.trainable.Metadata, train: bool):
         rows = {('nrows' if train else 'skiprows'): self.TD_LEN}
-        data = pd.read_csv(f'{DATA_HOME}/YearPredictionMSD.txt', header=None, **rows).to_numpy()  # type: ignore[call-overload]
+        data = pd.read_csv(f'{DATA_HOME}/YearPredictionMSD.txt', header=None,
+                           **rows).to_numpy()  # type: ignore[call-overload]
 
         if metadata.scaler is None:
             metadata.scaler = sklearn.preprocessing.StandardScaler()
             metadata.scaler.fit(data)
-            metadata.error_scaling = metadata.scaler.scale_[0]
+            metadata.error_scaling = metadata.scaler.scale_[0].item()
 
         data = metadata.scaler.transform(data)
 
@@ -51,9 +52,10 @@ class YearPredictionSplit(appmax.trainable.DataSplit):
     def __init__(self):
         self.metadata = appmax.trainable.Metadata()
         train_dev = YearPredictionDataset(self.metadata, train=True)
-        self.test = YearPredictionDataset(self.metadata, train=False)
+        test = YearPredictionDataset(self.metadata, train=False)
         self.train = torch.utils.data.Subset(train_dev, range(0, YearPredictionDataset.T_LEN))
         self.dev = torch.utils.data.Subset(train_dev, range(YearPredictionDataset.T_LEN, len(train_dev)))
+        self.test = torch.utils.data.Subset(test, torch.randperm(len(test)).tolist())  # shuffle the test set
 
 
 class YearNet(appmax.trainable.TrainableModel):
@@ -83,7 +85,8 @@ class YearNet(appmax.trainable.TrainableModel):
             epochs=50,
             batch_size=512,
         )
-        self.scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(self.optimizer, self.epochs * (YearPredictionDataset.T_LEN // self.batch_size))
+        self.scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+            self.optimizer, self.epochs * (YearPredictionDataset.T_LEN // self.batch_size))
 
         def init_weights(module):
             if isinstance(module, nn.Linear):
