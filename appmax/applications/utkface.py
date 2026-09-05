@@ -66,7 +66,7 @@ class UTKFaceDataset(appmax.trainable.Dataset):
         if metadata.scaler is None:
             metadata.scaler = sklearn.preprocessing.StandardScaler()
             metadata.scaler.fit(target_np)
-            metadata.error_scaling = metadata.scaler.scale_[0]
+            metadata.error_scaling = metadata.scaler.scale_[0].item()
 
         target_np = metadata.scaler.transform(target_np)
         self.target = torch.from_numpy(target_np).to(dtype=torch.get_default_dtype())

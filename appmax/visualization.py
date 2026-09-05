@@ -2,6 +2,7 @@ from pathlib import Path
 import typing
 import re
 import collections
+import json
 
 import click
 import torch
@@ -27,10 +28,10 @@ rng = np.random.default_rng(SEED)
 @click.argument('dataset')
 @click.argument('run-ids', default=['run'], nargs=-1)
 @click.option('--plot-only', is_flag=True)
-def main(visualization, dataset, run_ids, plot_only):
-    bundle = appmax.applications.DataBundle(dataset)
-    error_scaling = bundle.data_split.metadata.error_scaling
+@click.option('--fresh-metadata', is_flag=True)
+def main(visualization, dataset, run_ids, plot_only, fresh_metadata):
     dataset_path = EXPERIMENTS_DIR / dataset
+    error_scaling = load_scaling(dataset, dataset_path, fresh_metadata)
 
     match visualization:
         case 'check-2000':
@@ -96,6 +97,23 @@ TEX_ALIASES = {
 
 def to_display_label(label: str) -> str:
     return label.replace('_', ' ')
+
+
+def load_scaling(dataset: str, experiment_path: Path, fresh_metadata: bool) -> float:
+    metadata_file = experiment_path / 'metadata.pt'
+
+    if not fresh_metadata and metadata_file.is_file():
+        metadata_dict = torch.load(metadata_file)
+        return metadata_dict['error_scaling']
+
+    bundle = appmax.applications.DataBundle(dataset)
+    metadata_dict = bundle.data_split.metadata.to_dict()
+    torch.save(metadata_dict, metadata_file)
+
+    with open(experiment_path / f'metadata.json', 'w') as file_json:
+        json.dump(metadata_dict, file_json)
+
+    return metadata_dict['error_scaling']
 
 
 def load_df_results(experiment_path: Path, run_id: str) -> pd.DataFrame:

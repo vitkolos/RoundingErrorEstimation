@@ -73,6 +73,13 @@ class Metadata:
         print(f'removed {(~valid_rows).sum()} outliers', file=sys.stderr)
         return data_full[valid_rows]
 
+    def to_dict(self) -> dict:
+        return {
+            'error_scaling': self.error_scaling,
+            'bounds': getattr(self.bounds, 'seq', None),
+            'scales': getattr(self.scaler, 'scale_', np.empty(0)).tolist(),
+        }
+
 
 @dataclass
 class DataSplit:

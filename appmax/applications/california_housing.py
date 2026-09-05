@@ -16,7 +16,7 @@ class CaliforniaHousingDataset(appmax.trainable.Dataset):
         if metadata.scaler is None:
             metadata.scaler = sklearn.preprocessing.StandardScaler()
             metadata.scaler.fit(data)
-            metadata.error_scaling = metadata.scaler.scale_[0]
+            metadata.error_scaling = metadata.scaler.scale_[0].item()
 
         # standardize
         data = metadata.scaler.transform(data)
