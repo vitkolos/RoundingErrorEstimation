@@ -90,6 +90,7 @@ TEX_ALIASES = {
     'nearby_weighted': r'\frac{\tilde d_n(\Xi_x)}{S} E_{\Xi_x}',
     'integral_width': r'\tilde d_{n+1}(\Xi_x^E)',
     'integral_divided': r'\tilde d_{n+1}(\Xi_x^E)\over S',
+    'union_max': r'E_{\overline{\Xi}_T}',
     'union_mean': r'\overline{E}_{\overline{\Xi}_T}',
     'union_weighted_sum': r'\overline{E}^{\tilde d}_{\overline{\Xi}_T}',
 }
@@ -141,6 +142,7 @@ def extract_metrics(df_results: pd.DataFrame):
         'nearby_mean': described.loc['mean', 'error_nearby'],
         'nearby_weighted_sum': described.loc['weighted', 'error_nearby'],
         'integral_divided_sum': described.loc['weighted', 'integral'],
+        'union_max': described.loc['max', 'union_error'],
         'union_mean': described.loc['mean', 'union_error'],
         'union_weighted_sum': described.loc['weighted', 'union_error'],
     }
