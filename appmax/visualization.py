@@ -279,7 +279,7 @@ def plot_subsets(experiment_path: Path, run_id: str):
             ax.grid(True, linestyle='--', alpha=0.5)
             ax.set_xlabel('cardinality')
             ax.set_ylabel(r'metric ($\mu\pm\sigma$)')
-            fig.savefig(subsets_dir / f'{title}.svg', bbox_inches='tight')
+            fig.savefig(subsets_dir / f'{title}.pdf', bbox_inches='tight')
             pdf.savefig(fig)
             plt.close(fig)
 
@@ -327,15 +327,15 @@ def plot_histograms(experiment_path: Path, run_id: str):
         outliers_upper = counts[last_gt_one+1:].sum()
 
         if outliers_lower > 0:
-            text = f'there are {outliers_lower} outliers ∈ [{bin_edges[0]:.2f}, {limit_lower:.2f})'
-            fig.text(0.1, 0, text, ha='left', va='top', c='gray')
+            text = f'{outliers_lower} outliers ∈ [{bin_edges[0]:.2f}, {limit_lower:.2f})'
+            fig.text(0.15, 0.2, text, ha='left', va='top')
 
         if outliers_upper > 0:
-            text = f'there are {outliers_upper} outliers ∈ ({limit_upper:.2f}, {bin_edges[-1]:.2f}]'
-            fig.text(0.9, 0, text, ha='right', va='top', c='gray')
+            text = f'{outliers_upper} outliers ∈ ({limit_upper:.2f}, {bin_edges[-1]:.2f}]'
+            fig.text(0.87, 0.2, text, ha='right', va='top')
 
         ax.hist(data, bins='auto', range=(limit_lower, limit_upper), histtype='stepfilled')
-        fig.savefig(target_dir / f'{col}.svg', bbox_inches='tight')
+        fig.savefig(target_dir / f'{col}.pdf', bbox_inches='tight')
         plt.close(fig)
 
 
@@ -382,7 +382,7 @@ def plot_union_combined(experiment_path: Path, run_id: str, error_scaling: float
     ax.plot(ns, weighted, '.-', label=f'${TEX_ALIASES['union_weighted_sum']}$ weighted mean')
     ax.plot(ns, means, '.-', label=f'${TEX_ALIASES['union_mean']}$ arithmetic mean')
     ax.legend()
-    fig.savefig(target_dir / f'combined.svg', bbox_inches='tight')
+    fig.savefig(target_dir / f'combined.pdf', bbox_inches='tight')
     plt.close(fig)
 
 
