@@ -167,14 +167,21 @@ def wrap_html_tables(tables, into_one=True):
     return f'<!doctype html><html><head>{katex}<style>{style}</style></head><body>{html}</body></html>'
 
 
-def compare_results(experiment_path: Path, run_ids: list[str], error_scaling: float, aliases: dict[str, str] = {}):
+def compare_results(experiment_path: Path, run_ids: list[str], error_scaling: float):
     """writes nice tables containing the metrics and comparing them between runs"""
     dfs = {run_id: load_df_results(experiment_path, run_id) for run_id in run_ids}
 
     def analyze(name: str, df_results: pd.DataFrame):
         df_results.loc[:, appmax.experiment.UNSCALED_COLS] *= error_scaling
+        nets = {
+            'california': 1,
+            'year': 2,
+            'utkface': 3,
+        }
+        net_index = nets.get(experiment_path.name, experiment_path.name[0])
+        bits = ''.join(char for char in name if char.isdigit())
         return {
-            'run': f'{experiment_path.name}: {aliases[name] if name in aliases else name}',
+            'run': r' \( \boldsymbol{\widetilde{\mathcal{N}}_' + str(net_index) + '^{' + bits + '}} \\)',
             **extract_metrics(df_results),
         }
 
@@ -182,14 +189,48 @@ def compare_results(experiment_path: Path, run_ids: list[str], error_scaling: fl
     df = df.set_index('run')
     df.index.name = None
 
+    FMT = '{:.5f}'.format  # precision
+
+    df['nearby_mw'] = df.apply(lambda row: f'{FMT(row['nearby_mean'])} ({FMT(row['nearby_weighted_sum'])})', axis=1)
+    df['union_mw'] = df.apply(lambda row: f'{FMT(row['union_mean'])} ({FMT(row['union_weighted_sum'])})', axis=1)
+
+    columns = [
+        'sample_max', 'nearby_max', 'union_max',
+        'sample_mean', 'nearby_mw', 'union_mw',
+        'integral_divided_sum']
+
     target_dir = experiment_path / 'common_outputs'
     target_dir.mkdir(parents=True, exist_ok=True)
 
     with open(target_dir / 'comparison.tex', 'w') as f:
-        f.write(df.to_latex())
+        f.write(latex_table(df[columns].to_latex(float_format=FMT)))
 
     with open(target_dir / 'comparison.html', 'w') as f:
-        f.write(wrap_html_tables([df.to_html()]))
+        f.write(wrap_html_tables([df.to_html(columns=columns, float_format=FMT)]))
+
+
+def latex_table(table):
+    content_rows = []
+
+    for row in table.split('\n'):
+        if row and row[0] != '\\':
+            content_rows.append(row[1:])
+
+    header = r'''\begin{tabular}{c|| c | c | c || c | c | c || c}
+        & \multicolumn{3}{c||}{} & \multicolumn{3}{c||}{}  & Weighted\\[2pt]
+        & \multicolumn{3}{c||}{\textbf{Maximum} Error over}
+        & \multicolumn{3}{c||}{\textbf{(Weighted) Average} Maximum Error over}
+        & \textbf{Integral}-Based\\[3pt]
+        & Dataset & Polytopes & Extended & Dataset & Polytopes & Extended & Error over\\
+        & & & Polytopes & & & Polytopes & Polytopes\\[2pt]
+        & $\bm{E_T}$ & $\bm{E_{\Xi_T}}$ & $\bm{E_{\overline{\Xi}_T}}$ & $\bm{\overline{E}_T}$
+        & $\bm{\overline{E}_{\Xi_T}}$~~$\Big(\bm{\overline{E}_{\Xi_T}^{\,\widetilde{d}}}\Big)$
+        & $\bm{\overline{E}_{\overline{\Xi}_T}}$~~$\Big(\bm{\overline{E}_{\overline{\Xi}_T}^{\,\widetilde{d}}}\Big)$
+        & $\bm{\overline{E}_{\Xi_T^E}^{\,\widetilde{d}}}$\\[5pt]
+        \hline
+    '''
+    content = '[3pt]\n\\hline\\rule{0pt}{3.5ex}'.join(content_rows)
+    return header + '% ' + content + '\n\\end{tabular}\n'
 
 
 COL_SIZE = ('size', 'exact')
@@ -200,7 +241,6 @@ def evaluate_subsets(experiment_path: Path, run_id: str, error_scaling: float):
     1. iterates over different cardinalities,
     2. chooses NUM_SUBSETS random subsets of a given cardinality,
     3. computes our metrics,
-    4. finds the mean and std,
     5. stores the results in a csv file
     """
     NUM_SUBSETS = 100
@@ -480,7 +520,6 @@ def plot_tracked_widths(experiments: dict[str, str]):
 
     def plot_charts(category, name, identifiers):
         num = len(identifiers)
-        fig, axes = plt.subplots(num, figsize=(6.4, 3*num))
 
         for ax, (experiment, key, label) in zip(axes, identifiers):
             group_data = grouped[experiment].get_group(key)

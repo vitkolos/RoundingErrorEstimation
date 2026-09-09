@@ -6,9 +6,9 @@ python="${1:-uv run}"
 prefix="$python -m appmax.visualization"
 echo "passing commands to '$prefix'"
 
-california="california 4bit 6bit 8bit"
-year="year 4bit 6bit 8bit"
-utkface="utkface 6bit 8bit 12bit"
+california="california 8bit 6bit 4bit"
+year="year 8bit 6bit 4bit"
+utkface="utkface 12bit 8bit 6bit"
 
 for dataset_runs in "$california" "$year" "$utkface"; do
     $prefix check-2000 $dataset_runs
