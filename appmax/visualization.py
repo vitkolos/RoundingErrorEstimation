@@ -325,23 +325,12 @@ def plot_subsets(experiment_path: Path, run_id: str):
 
 
 def show_input_faces(experiment_path: Path, run_id: str, error_scaling: float):
-    NUM_FACES = 8
-
-    def pop_max(xs: list[dict], key) -> dict:
-        indices = range(len(xs))
-        max_idx = max(indices, key=lambda idx: key(xs[idx]))
-        return xs.pop(max_idx)
-
     results = appmax.experiment.load_batch_results(experiment_path, run_id)
-    special = []
 
-    for i in range(NUM_FACES):
-        special.append(pop_max(results, key=lambda x: x['result_nearby']['fun'] - x['result_sample']['fun']))
-        special.append(pop_max(results, key=lambda x: x['result_nearby']['union']['fun'] - x['result_sample']['fun']))
-        special.append(pop_max(results, key=lambda x: x['result_nearby']['union']['fun'] - x['result_nearby']['fun']))
-
-    results = special  # + results
-    results = results[:NUM_FACES]
+    selected = [1849, 1096, 1222, 1397, 1779, 561,
+                1775, 1198]
+                # 977, 1414, 1775, 430, 1749, 699, 1638, 1198]
+    results = [results[idx] for idx in selected]
 
     target_dir = experiment_path / f'{run_id}_outputs' / 'faces'
     target_dir.mkdir(parents=True, exist_ok=True)
