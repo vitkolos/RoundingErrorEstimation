@@ -50,7 +50,7 @@ def main(visualization, dataset, run_ids, plot_only, fresh_metadata):
 
         case 'input-face':
             for run_id in run_ids:
-                show_input_faces(dataset_path, run_id)
+                show_input_faces(dataset_path, run_id, error_scaling)
 
         case 'histograms':
             for run_id in run_ids:
@@ -324,9 +324,24 @@ def plot_subsets(experiment_path: Path, run_id: str):
             plt.close(fig)
 
 
-def show_input_faces(experiment_path: Path, run_id: str):
-    NUM_FACES = 30
+def show_input_faces(experiment_path: Path, run_id: str, error_scaling: float):
+    NUM_FACES = 8
+
+    def pop_max(xs: list[dict], key) -> dict:
+        indices = range(len(xs))
+        max_idx = max(indices, key=lambda idx: key(xs[idx]))
+        return xs.pop(max_idx)
+
     results = appmax.experiment.load_batch_results(experiment_path, run_id)
+    special = []
+
+    for i in range(NUM_FACES // 2):
+        special.append(pop_max(results, key=lambda x: x['result_nearby']['fun'] - x['result_sample']['fun']))
+        special.append(pop_max(results, key=lambda x: x['result_nearby']['union']['fun'] - x['result_sample']['fun']))
+
+    # results = special + results
+    # results = results[:NUM_FACES]
+    results = special
 
     target_dir = experiment_path / f'{run_id}_outputs' / 'faces'
     target_dir.mkdir(parents=True, exist_ok=True)
@@ -334,7 +349,7 @@ def show_input_faces(experiment_path: Path, run_id: str):
     def x_to_img(x: torch.Tensor):
         return (x.movedim(0, -1) + 1) / 2
 
-    for i, item in enumerate(results[:NUM_FACES]):
+    for i, item in enumerate(results):
         xs: dict[str, torch.Tensor] = {}
         xs['original'] = item['result_sample']['x']
         xs['nearby'] = item['result_nearby']['x']
@@ -342,6 +357,10 @@ def show_input_faces(experiment_path: Path, run_id: str):
 
         for name, x in xs.items():
             plt.imsave(target_dir / f'face_{i:04d}_{name}.png', x_to_img(x))
+
+    df = pd.DataFrame(appmax.experiment.dict2flat(r) for r in results)
+    df.loc[:, appmax.experiment.UNSCALED_COLS] *= error_scaling
+    df.to_csv(target_dir / 'faces.csv')
 
 
 def plot_histograms(experiment_path: Path, run_id: str):
