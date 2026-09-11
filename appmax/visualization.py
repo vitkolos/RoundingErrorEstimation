@@ -335,13 +335,13 @@ def show_input_faces(experiment_path: Path, run_id: str, error_scaling: float):
     results = appmax.experiment.load_batch_results(experiment_path, run_id)
     special = []
 
-    for i in range(NUM_FACES // 2):
+    for i in range(NUM_FACES):
         special.append(pop_max(results, key=lambda x: x['result_nearby']['fun'] - x['result_sample']['fun']))
         special.append(pop_max(results, key=lambda x: x['result_nearby']['union']['fun'] - x['result_sample']['fun']))
+        special.append(pop_max(results, key=lambda x: x['result_nearby']['union']['fun'] - x['result_nearby']['fun']))
 
-    # results = special + results
-    # results = results[:NUM_FACES]
-    results = special
+    results = special  # + results
+    results = results[:NUM_FACES]
 
     target_dir = experiment_path / f'{run_id}_outputs' / 'faces'
     target_dir.mkdir(parents=True, exist_ok=True)
@@ -360,7 +360,9 @@ def show_input_faces(experiment_path: Path, run_id: str, error_scaling: float):
 
     df = pd.DataFrame(appmax.experiment.dict2flat(r) for r in results)
     df.loc[:, appmax.experiment.UNSCALED_COLS] *= error_scaling
-    df.to_csv(target_dir / 'faces.csv')
+    columns = ['sample_index', 'error_sample', 'error_nearby', 'union_error',
+               'polytope_width', 'union_width', 'integral']
+    df.to_csv(target_dir / 'faces.csv', columns=columns)
 
 
 def plot_histograms(experiment_path: Path, run_id: str):
