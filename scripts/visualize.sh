@@ -13,7 +13,7 @@ utkface="utkface 12bit 8bit 6bit"
 for dataset_runs in "$california" "$year" "$utkface"; do
     $prefix check-2000 $dataset_runs
     $prefix comparison $dataset_runs
-    $prefix cardinalities $dataset_runs
+    $prefix cardinalities $dataset_runs #--plot-only
     $prefix histograms $dataset_runs
     $prefix union-combined $dataset_runs
 done

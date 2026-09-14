@@ -20,6 +20,9 @@ SEED = 42
 EXPERIMENTS_DIR = Path('experiments')
 LOAD_MODE = 'batch'
 
+ZOOM = 1.5
+FIGSIZE = (6.4/ZOOM, 4.8/ZOOM)
+
 rng = np.random.default_rng(SEED)
 
 
@@ -47,6 +50,8 @@ def main(visualization, dataset, run_ids, plot_only, fresh_metadata):
                     evaluate_subsets(dataset_path, run_id, error_scaling)
 
                 plot_subsets(dataset_path, run_id)
+
+            plot_subsets_multiple(dataset_path, run_ids)
 
         case 'input-face':
             for run_id in run_ids:
@@ -81,8 +86,8 @@ TEX_ALIASES = {
     'sample_mean': r'\overline{E_T}',
     'nearby_max': r'E_{\Xi_T}',
     'nearby_mean': r'\overline{E_{\Xi_T}}',
-    'nearby_weighted_sum': r'\overline{E}^{\tilde d}_{\Xi_T}',
-    'integral_divided_sum': r'\overline{E}^{\tilde d}_{\Xi_T^E}',
+    'nearby_weighted_sum': r'\overline{E}^{\widetilde d}_{\Xi_T}',
+    'integral_divided_sum': r'\overline{E}^{\widetilde d}_{\Xi_T^E}',
     'error_sample': r'E(x)',
     'error_nearby': r'E_{\Xi_x}',
     'polytope_width': r'\tilde d_n(\Xi_x)',
@@ -92,11 +97,22 @@ TEX_ALIASES = {
     'integral_divided': r'\tilde d_{n+1}(\Xi_x^E)\over S',
     'union_max': r'E_{\overline{\Xi}_T}',
     'union_mean': r'\overline{E}_{\overline{\Xi}_T}',
-    'union_weighted_sum': r'\overline{E}^{\tilde d}_{\overline{\Xi}_T}',
+    'union_weighted_sum': r'\overline{E}^{\widetilde d}_{\overline{\Xi}_T}',
+}
+
+NETS = {
+    'california': 1,
+    'year': 2,
+    'utkface': 3,
+}
+
+LABEL_ALIASES = {
+    'union_width': 'extended polytope width',
 }
 
 
 def to_display_label(label: str) -> str:
+    label = LABEL_ALIASES.get(label, label)
     return label.replace('_', ' ')
 
 
@@ -173,12 +189,7 @@ def compare_results(experiment_path: Path, run_ids: list[str], error_scaling: fl
 
     def analyze(name: str, df_results: pd.DataFrame):
         df_results.loc[:, appmax.experiment.UNSCALED_COLS] *= error_scaling
-        nets = {
-            'california': 1,
-            'year': 2,
-            'utkface': 3,
-        }
-        net_index = nets.get(experiment_path.name, experiment_path.name[0])
+        net_index = NETS.get(experiment_path.name, experiment_path.name[0])
         bits = ''.join(char for char in name if char.isdigit())
         return {
             'run': r' \( \boldsymbol{\widetilde{\mathcal{N}}_' + str(net_index) + '^{' + bits + '}} \\)',
@@ -267,6 +278,22 @@ def evaluate_subsets(experiment_path: Path, run_id: str, error_scaling: float):
     subsets_dir.mkdir(parents=True, exist_ok=True)
     pd.DataFrame(stats_for_sizes).to_csv(subsets_dir / 'subsets.csv')
 
+def get_subset_label(column):
+    match column:
+        case 'sample_max' | 'sample_mean':
+            return 'over dataset'
+        case 'nearby_max' | 'nearby_mean':
+            return 'over polytopes'
+        case 'nearby_weighted_sum':
+            return 'weighted over polytopes'
+        case 'union_max' | 'union_mean':
+            return 'over ext. polytopes'
+        case 'union_weighted_sum':
+            return 'weighted over ext. polyt.'
+        case 'integral_divided_sum':
+            return 'over polytopes'
+        case _:
+            return column
 
 def plot_subsets(experiment_path: Path, run_id: str):
     """plots the mean and std for different cardinalities (as computed by evaluate_subsets), groups metrics with similar properties"""
@@ -275,6 +302,12 @@ def plot_subsets(experiment_path: Path, run_id: str):
 
     columns = df.columns.get_level_values(0).unique().drop('size')
     grouped_columns = collections.defaultdict(list)
+
+    x_labels = {
+        'max': 'maximum errors',
+        'weighted, mean': 'average errors',
+        'integral': 'integral-based error',
+    }
 
     for column in columns:
         match column.split('_'):
@@ -289,14 +322,14 @@ def plot_subsets(experiment_path: Path, run_id: str):
         # plt.rcParams['text.usetex'] = True
 
         for title, group in grouped_columns.items():
-            fig, ax = plt.subplots()
+            fig, ax = plt.subplots(figsize=FIGSIZE)
             legend = []
 
             for column in group:
                 size = df.loc[:, COL_SIZE]
                 mean = df.loc[:, (column, 'mean')]
                 std = df.loc[:, (column, 'std')]
-                label = to_display_label(column)
+                label = get_subset_label(column)
 
                 if tex := TEX_ALIASES.get(column):
                     label = f'${tex}$ {label}'
@@ -310,18 +343,100 @@ def plot_subsets(experiment_path: Path, run_id: str):
             def print_legend(legend, loc='best'):
                 return ax.legend([item['handle'] for item in legend], [item['label'] for item in legend], loc=loc)
 
-            if len(legend) > 3:
+            if len(legend) > 3 and False:
                 ax.add_artist(print_legend(legend[:2], 'upper left'))
                 print_legend(legend[2:])
             else:
                 print_legend(legend)
 
             ax.grid(True, linestyle='--', alpha=0.5)
-            ax.set_xlabel('cardinality')
-            ax.set_ylabel(r'metric ($\mu\pm\sigma$)')
+            ax.set_xlabel('dataset cardinality')
+            ax.set_ylabel(x_labels[title] + r' ($\mu\pm\sigma$)')
             fig.savefig(subsets_dir / f'{title}.pdf', bbox_inches='tight')
             pdf.savefig(fig)
             plt.close(fig)
+
+
+def plot_subsets_multiple(experiment_path: Path, run_ids: str):
+    """plots the mean and std for different cardinalities (as computed by evaluate_subsets), groups metrics with similar properties"""
+    dfs = [pd.read_csv(experiment_path / f'{run_id}_outputs' / 'subsets' /
+                       'subsets.csv', header=[0, 1], index_col=0) for run_id in run_ids]
+
+    # aggregate columns
+    columns = dfs[0].columns.get_level_values(0).unique().drop('size')
+    grouped_columns = collections.defaultdict(list)
+
+    for column in columns:
+        match column.split('_'):
+            case [_, 'max']:
+                grouped_columns['maximum errors'].append(column)
+            case ['integral', *_]:
+                grouped_columns['integral-based error'].append(column)
+            case _:
+                grouped_columns['average errors'].append(column)
+
+    for g_title, group in grouped_columns.items():
+        # prepare data
+        data = []
+
+        for df, run_id in zip(dfs, run_ids):
+            df_plots = []
+
+            for column in group:
+                label = get_subset_label(column)
+
+                if tex := TEX_ALIASES.get(column):
+                    label = f'${tex}$ {label}'
+
+                df_plots.append({
+                    'label': label,
+                    'xs': df.loc[:, COL_SIZE],
+                    'ys': df.loc[:, (column, 'mean')],
+                    'std': df.loc[:, (column, 'std')],
+                })
+
+            net_index = NETS.get(experiment_path.name, experiment_path.name[0])
+            bits = ''.join(char for char in run_id if char.isdigit())
+            title = r'$\widetilde{\mathcal{N}}_' + str(net_index) + '^{' + bits + '}$'
+            data.append({'title': title, 'plots': df_plots})
+
+        # plot
+        dir_path = experiment_path / 'common_outputs' / 'subsets'
+        file_name = f'{g_title}.pdf'
+        plot_subplots(dir_path, file_name, g_title, data)
+
+
+def plot_subplots(dir_path, file_name, y_label, data: list[dict[list[dict]]]):
+    fig, axs = plt.subplots(1, 3, figsize=(FIGSIZE[0]*3, FIGSIZE[1]), layout="constrained")
+
+    for ax, quantization in zip(axs, data):
+        legend = []
+
+        for plot in quantization['plots']:
+            handle, = ax.plot(plot['xs'], plot['ys'], '.-')
+
+            if 'std' in plot:
+                ax.fill_between(plot['xs'], plot['ys']-plot['std'], plot['ys']+plot['std'], alpha=0.2)
+
+            legend.append({'label': plot['label'], 'handle': handle, 'last_value': plot['ys'].iloc[-1]})
+
+        ax.grid(True, linestyle='--', alpha=0.5)
+        ax.set_title(quantization['title'])
+        ax.set_xlabel('dataset cardinality')
+        ax.set_ylabel(y_label + r' ($\mu\pm\sigma$)')
+
+    legend.sort(key=lambda item: item['last_value'], reverse=True)
+    fig.legend(
+        [item['handle'] for item in legend],
+        [item['label'] for item in legend],
+        loc="center left",
+        bbox_to_anchor=(0.99, 0.56),
+        frameon=False,
+    )
+
+    dir_path.mkdir(parents=True, exist_ok=True)
+    fig.savefig(dir_path / file_name, bbox_inches='tight')
+    plt.close(fig)
 
 
 def show_input_faces(experiment_path: Path, run_id: str, error_scaling: float):
@@ -329,7 +444,7 @@ def show_input_faces(experiment_path: Path, run_id: str, error_scaling: float):
 
     selected = [1849, 1096, 1222, 1397, 1779, 561,
                 1775, 1198]
-                # 977, 1414, 1775, 430, 1749, 699, 1638, 1198]
+    # 977, 1414, 1775, 430, 1749, 699, 1638, 1198]
     results = [results[idx] for idx in selected]
 
     target_dir = experiment_path / f'{run_id}_outputs' / 'faces'
@@ -361,7 +476,7 @@ def plot_histograms(experiment_path: Path, run_id: str):
     target_dir.mkdir(parents=True, exist_ok=True)
 
     for col in df_results.columns:
-        fig, ax = plt.subplots()
+        fig, ax = plt.subplots(figsize=FIGSIZE)
         ax.set_xlabel(to_display_label(col))
         ax.set_ylabel('frequency')
         data = df_results[col]
@@ -369,7 +484,7 @@ def plot_histograms(experiment_path: Path, run_id: str):
         # we remove leading and trailing bins with counts 0 or 1
         counts, bin_edges = np.histogram(data, bins='auto')
         bins_gt_one = np.flatnonzero(counts > 1)
-        first_gt_one = bins_gt_one.min()
+        first_gt_one = 0  # bins_gt_one.min()
         last_gt_one = bins_gt_one.max()
         limit_lower = bin_edges[first_gt_one]
         limit_upper = bin_edges[last_gt_one+1]
@@ -378,11 +493,12 @@ def plot_histograms(experiment_path: Path, run_id: str):
 
         if outliers_lower > 0:
             text = f'{outliers_lower} outliers ∈ [{bin_edges[0]:.2f}, {limit_lower:.2f})'
-            fig.text(0.15, 0.2, text, ha='left', va='top')
+            fig.text(0.15, 0.83, text, ha='left', va='top')
 
         if outliers_upper > 0:
             text = f'{outliers_upper} outliers ∈ ({limit_upper:.2f}, {bin_edges[-1]:.2f}]'
-            fig.text(0.87, 0.2, text, ha='right', va='top')
+            fig.text(0.87, 0.83, text, ha='right', va='top')
+            # bottom corner -> y=0.2
 
         ax.hist(data, bins='auto', range=(limit_lower, limit_upper), histtype='stepfilled')
         fig.savefig(target_dir / f'{col}.pdf', bbox_inches='tight')
@@ -426,11 +542,13 @@ def plot_union_combined(experiment_path: Path, run_id: str, error_scaling: float
     weighted = np.average(maxima_unscaled, axis=0, weights=widths)
     ns = range(1, len(means)+1)
 
-    fig, ax = plt.subplots()
-    ax.set_xlabel('discovered subpolytopes')
-    ax.set_ylabel('mean maximum error')
-    ax.plot(ns, weighted, '.-', label=f'${TEX_ALIASES['union_weighted_sum']}$ weighted mean')
-    ax.plot(ns, means, '.-', label=f'${TEX_ALIASES['union_mean']}$ arithmetic mean')
+    fig, ax = plt.subplots(figsize=FIGSIZE)
+    ax.set_xlabel('number of subpolytopes')
+    ax.set_ylabel('average maximum errors')
+    offset = 1
+    ax.plot(ns[offset:], weighted[offset:], '.-', label=f'${TEX_ALIASES['union_weighted_sum']}$ weighted average')
+    ax.plot(ns[offset:], means[offset:], '.-', label=f'${TEX_ALIASES['union_mean']}$ arithmetic average')
+    ax.grid(True, linestyle='--', alpha=0.5)
     ax.legend()
     fig.savefig(target_dir / f'combined.pdf', bbox_inches='tight')
     plt.close(fig)
