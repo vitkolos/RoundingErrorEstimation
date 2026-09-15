@@ -1,7 +1,5 @@
 from pathlib import Path
-import typing
 import re
-import collections
 import json
 
 import PIL
@@ -23,6 +21,8 @@ LOAD_MODE = 'batch'
 
 ZOOM = 1.5
 FIGSIZE = (6.4/ZOOM, 4.8/ZOOM)
+
+PRINT_COLORS = False
 
 rng = np.random.default_rng(SEED)
 
@@ -313,7 +313,7 @@ def plot_subsets(experiment_path: Path, run_id: str, with_legend: bool):
             if tex := TEX_ALIASES.get(column):
                 label = f'${tex}$ {label}'
 
-            handle, = ax.plot(size, mean, '.-')
+            handle, = ax.plot(size, mean, '.-', label=label)
             ax.fill_between(size, mean-std, mean+std, alpha=0.2)
             legend.append({'label': label, 'handle': handle, 'last_value': mean.iloc[-1]})
 
@@ -321,6 +321,8 @@ def plot_subsets(experiment_path: Path, run_id: str, with_legend: bool):
 
         if with_legend:
             ax.legend([item['handle'] for item in legend], [item['label'] for item in legend])
+        elif PRINT_COLORS:
+            print_legend_colors(ax)
 
         ax.grid(True, linestyle='--', alpha=0.5)
         ax.set_xlabel('dataset cardinality')
@@ -376,6 +378,8 @@ def plot_union_combined(experiment_path: Path, run_id: str, error_scaling: float
 
     if with_legend:
         ax.legend()
+    elif PRINT_COLORS:
+        print_legend_colors(ax)
 
     fig.savefig(target_dir / f'combined.pdf', bbox_inches='tight')
     plt.close(fig)
@@ -384,12 +388,14 @@ def plot_union_combined(experiment_path: Path, run_id: str, error_scaling: float
 def show_input_faces(experiment_path: Path, run_id: str, error_scaling: float):
     bundle = appmax.applications.DataBundle('utkface')
     model = bundle.load_model()
+    model_approx = bundle.load_model()
+    bits = int(''.join(char for char in run_id if char.isdigit()))  # hack to extract bits from run_id
+    model_approx.round(bits=bits)
     samples_test = model.subset(bundle.data_split.test)
     results = appmax.experiment.load_batch_results(experiment_path, run_id)
 
     selected = [1849, 1096, 1222, 1397, 1779, 561,
                 1775, 1198]
-    # 977, 1414, 1775, 430, 1749, 699, 1638, 1198]
     results = [results[idx] for idx in selected]
 
     target_dir = experiment_path / f'{run_id}_outputs' / 'faces'
@@ -397,6 +403,9 @@ def show_input_faces(experiment_path: Path, run_id: str, error_scaling: float):
 
     def x_to_img(x: torch.Tensor):
         return (x.movedim(0, -1) + 1) / 2
+
+    def to_age(value):
+        return bundle.data_split.metadata.scaler.inverse_transform(np.array([[value]])).item()
 
     for i, item in enumerate(results):
         xs: dict[str, torch.Tensor] = {}
@@ -406,22 +415,26 @@ def show_input_faces(experiment_path: Path, run_id: str, error_scaling: float):
 
         for name, x in xs.items():
             idx = selected[i]
+            age_gold = to_age(samples_test[idx][1].item())
+            age_model = to_age(model(x.unsqueeze(0)).item())
+            age_approx = to_age(model_approx(x.unsqueeze(0)).item())
 
-            # if name == 'original':
-            #     age = samples_test[idx][1].item()
-            # else:
-            #     age = 0
+            img_np = (x_to_img(x).numpy() * 255).astype(np.uint8)
+            img_pil = PIL.Image.fromarray(img_np)
+            FACE_SIZE = 512
+            MARGIN = 8
+            img_pil = img_pil.resize((FACE_SIZE, FACE_SIZE), resample=PIL.Image.Resampling.NEAREST)
+            draw = PIL.ImageDraw.Draw(img_pil)
+            kwargs = {'fill': "white", 'stroke_width': 4, 'stroke_fill': "black", 'font_size': FACE_SIZE/8}
 
-            # age = bundle.data_split.metadata.scaler.inverse_transform(np.array([[age]])).item()
+            draw.text((MARGIN, FACE_SIZE-MARGIN), str(round(age_model)), anchor='lb', **kwargs)
 
-            # img_np = (x_to_img(x).detach().cpu().numpy() * 255).astype(np.uint8)
-            # img_pil = PIL.Image.fromarray(img_np)
-            # draw = PIL.ImageDraw.Draw(img_pil)
-            # position = (0, 0)
-            # draw.text(position, f"{age:.1f}", fill="black", stroke_width=1, stroke_fill="white")
-            # img_pil.save(target_dir / f'face_{i:04d}_{name}.png')
-            plt.imsave(target_dir / f'face_{i:04d}_{name}_a.png', x_to_img(samples_test[idx][0]))
-            plt.imsave(target_dir / f'face_{i:04d}_{name}_b.png', x_to_img(x))
+            if name == 'original':
+                draw.text((MARGIN, MARGIN), str(round(age_gold)), anchor='lt', **kwargs)
+            else:
+                draw.text((FACE_SIZE-MARGIN, FACE_SIZE-MARGIN), str(round(age_approx)), anchor='rb', **kwargs)
+
+            img_pil.save(target_dir / f'face_{i:04d}_{name}.png')
 
     df = pd.DataFrame(appmax.experiment.dict2flat(r) for r in results)
     df.loc[:, appmax.experiment.UNSCALED_COLS] *= error_scaling
@@ -471,6 +484,18 @@ def check_len(experiment_path: Path, run_id: str, desired_len: int):
 
     if len(results) != desired_len:
         raise ValueError(f'run {experiment_path.name}/{run_id} does not contain {desired_len} items')
+
+
+hex_to_tab = {
+    matplotlib.colors.to_hex(c): name for name, c in matplotlib.colors.TABLEAU_COLORS.items()
+}
+
+
+def print_legend_colors(ax):
+    for handle, label in zip(*ax.get_legend_handles_labels()):
+        color_name = hex_to_tab.get(matplotlib.colors.to_hex(handle.get_color())).replace('tab:', 'my')
+        pretty_label = re.sub(r'\\|widetilde |\{|\}|\$', '', label).replace('overline', '‾')
+        print(f"{color_name: <10}{pretty_label}")
 
 
 def print_palette():
