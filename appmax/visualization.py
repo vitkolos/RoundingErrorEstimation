@@ -4,12 +4,13 @@ import re
 import collections
 import json
 
+import PIL
 import click
 import torch
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-from matplotlib.backends.backend_pdf import PdfPages
+import matplotlib.colors
 
 import appmax.experiment
 import appmax.logger
@@ -32,7 +33,8 @@ rng = np.random.default_rng(SEED)
 @click.argument('run-ids', default=['run'], nargs=-1)
 @click.option('--plot-only', is_flag=True)
 @click.option('--fresh-metadata', is_flag=True)
-def main(visualization, dataset, run_ids, plot_only, fresh_metadata):
+@click.option('--with-legend', is_flag=True)
+def main(visualization, dataset, run_ids, plot_only, fresh_metadata, with_legend):
     dataset_path = EXPERIMENTS_DIR / dataset
     error_scaling = load_scaling(dataset, dataset_path, fresh_metadata)
 
@@ -49,9 +51,11 @@ def main(visualization, dataset, run_ids, plot_only, fresh_metadata):
                 if not plot_only:
                     evaluate_subsets(dataset_path, run_id, error_scaling)
 
-                plot_subsets(dataset_path, run_id)
+                plot_subsets(dataset_path, run_id, with_legend)
 
-            plot_subsets_multiple(dataset_path, run_ids)
+        case 'union-combined':
+            for run_id in run_ids:
+                plot_union_combined(dataset_path, run_id, error_scaling, with_legend)
 
         case 'input-face':
             for run_id in run_ids:
@@ -61,21 +65,8 @@ def main(visualization, dataset, run_ids, plot_only, fresh_metadata):
             for run_id in run_ids:
                 plot_histograms(dataset_path, run_id)
 
-        case 'union-combined':
-            for run_id in run_ids:
-                plot_union_combined(dataset_path, run_id, error_scaling)
-
-        # ---
-
-        case 'points':
-            print_points()
-
-        case 'widths':
-            plot_tracked_widths({'california': EXPERIMENTS_DIR / 'california' / 'widths',
-                                 'year': EXPERIMENTS_DIR / 'year' / 'widths'})
-
-        case 'union':
-            plot_tracked_union(dataset_path / 'union')
+        case 'palette':
+            print_palette()
 
         case _:
             raise NotImplementedError(f'{visualization} not implemented')
@@ -83,9 +74,9 @@ def main(visualization, dataset, run_ids, plot_only, fresh_metadata):
 
 TEX_ALIASES = {
     'sample_max': r'E_T',
-    'sample_mean': r'\overline{E_T}',
+    'sample_mean': r'\overline{E}_T',
     'nearby_max': r'E_{\Xi_T}',
-    'nearby_mean': r'\overline{E_{\Xi_T}}',
+    'nearby_mean': r'\overline{E}_{\Xi_T}',
     'nearby_weighted_sum': r'\overline{E}^{\widetilde d}_{\Xi_T}',
     'integral_divided_sum': r'\overline{E}^{\widetilde d}_{\Xi_T^E}',
     'error_sample': r'E(x)',
@@ -278,6 +269,7 @@ def evaluate_subsets(experiment_path: Path, run_id: str, error_scaling: float):
     subsets_dir.mkdir(parents=True, exist_ok=True)
     pd.DataFrame(stats_for_sizes).to_csv(subsets_dir / 'subsets.csv')
 
+
 def get_subset_label(column):
     match column:
         case 'sample_max' | 'sample_mean':
@@ -295,151 +287,104 @@ def get_subset_label(column):
         case _:
             return column
 
-def plot_subsets(experiment_path: Path, run_id: str):
+
+def plot_subsets(experiment_path: Path, run_id: str, with_legend: bool):
     """plots the mean and std for different cardinalities (as computed by evaluate_subsets), groups metrics with similar properties"""
     subsets_dir = experiment_path / f'{run_id}_outputs' / 'subsets'
     df = pd.read_csv(subsets_dir / 'subsets.csv', header=[0, 1], index_col=0)
 
-    columns = df.columns.get_level_values(0).unique().drop('size')
-    grouped_columns = collections.defaultdict(list)
+    groups = [
+        ('max', 'maximum errors', ['sample_max', 'nearby_max', 'union_max']),
+        ('weighted, mean', 'average errors', ['sample_mean', 'nearby_mean',
+         'union_mean', 'nearby_weighted_sum', 'union_weighted_sum']),
+        ('integral', 'integral-based error', ['integral_divided_sum']),
+    ]
 
-    x_labels = {
-        'max': 'maximum errors',
-        'weighted, mean': 'average errors',
-        'integral': 'integral-based error',
-    }
-
-    for column in columns:
-        match column.split('_'):
-            case [_, 'max']:
-                grouped_columns['max'].append(column)
-            case ['integral', *_]:
-                grouped_columns['integral'].append(column)
-            case _:
-                grouped_columns['weighted, mean'].append(column)
-
-    with PdfPages(subsets_dir / 'bundle.pdf') as pdf:
-        # plt.rcParams['text.usetex'] = True
-
-        for title, group in grouped_columns.items():
-            fig, ax = plt.subplots(figsize=FIGSIZE)
-            legend = []
-
-            for column in group:
-                size = df.loc[:, COL_SIZE]
-                mean = df.loc[:, (column, 'mean')]
-                std = df.loc[:, (column, 'std')]
-                label = get_subset_label(column)
-
-                if tex := TEX_ALIASES.get(column):
-                    label = f'${tex}$ {label}'
-
-                handle, = ax.plot(size, mean, '.-')
-                ax.fill_between(size, mean-std, mean+std, alpha=0.2)
-                legend.append({'label': label, 'handle': handle, 'last_value': mean.iloc[-1]})
-
-            legend.sort(key=lambda item: item['last_value'], reverse=True)
-
-            def print_legend(legend, loc='best'):
-                return ax.legend([item['handle'] for item in legend], [item['label'] for item in legend], loc=loc)
-
-            if len(legend) > 3 and False:
-                ax.add_artist(print_legend(legend[:2], 'upper left'))
-                print_legend(legend[2:])
-            else:
-                print_legend(legend)
-
-            ax.grid(True, linestyle='--', alpha=0.5)
-            ax.set_xlabel('dataset cardinality')
-            ax.set_ylabel(x_labels[title] + r' ($\mu\pm\sigma$)')
-            fig.savefig(subsets_dir / f'{title}.pdf', bbox_inches='tight')
-            pdf.savefig(fig)
-            plt.close(fig)
-
-
-def plot_subsets_multiple(experiment_path: Path, run_ids: str):
-    """plots the mean and std for different cardinalities (as computed by evaluate_subsets), groups metrics with similar properties"""
-    dfs = [pd.read_csv(experiment_path / f'{run_id}_outputs' / 'subsets' /
-                       'subsets.csv', header=[0, 1], index_col=0) for run_id in run_ids]
-
-    # aggregate columns
-    columns = dfs[0].columns.get_level_values(0).unique().drop('size')
-    grouped_columns = collections.defaultdict(list)
-
-    for column in columns:
-        match column.split('_'):
-            case [_, 'max']:
-                grouped_columns['maximum errors'].append(column)
-            case ['integral', *_]:
-                grouped_columns['integral-based error'].append(column)
-            case _:
-                grouped_columns['average errors'].append(column)
-
-    for g_title, group in grouped_columns.items():
-        # prepare data
-        data = []
-
-        for df, run_id in zip(dfs, run_ids):
-            df_plots = []
-
-            for column in group:
-                label = get_subset_label(column)
-
-                if tex := TEX_ALIASES.get(column):
-                    label = f'${tex}$ {label}'
-
-                df_plots.append({
-                    'label': label,
-                    'xs': df.loc[:, COL_SIZE],
-                    'ys': df.loc[:, (column, 'mean')],
-                    'std': df.loc[:, (column, 'std')],
-                })
-
-            net_index = NETS.get(experiment_path.name, experiment_path.name[0])
-            bits = ''.join(char for char in run_id if char.isdigit())
-            title = r'$\widetilde{\mathcal{N}}_' + str(net_index) + '^{' + bits + '}$'
-            data.append({'title': title, 'plots': df_plots})
-
-        # plot
-        dir_path = experiment_path / 'common_outputs' / 'subsets'
-        file_name = f'{g_title}.pdf'
-        plot_subplots(dir_path, file_name, g_title, data)
-
-
-def plot_subplots(dir_path, file_name, y_label, data: list[dict[list[dict]]]):
-    fig, axs = plt.subplots(1, 3, figsize=(FIGSIZE[0]*3, FIGSIZE[1]), layout="constrained")
-
-    for ax, quantization in zip(axs, data):
+    for file_name, x_label, columns in groups:
+        fig, ax = plt.subplots(figsize=FIGSIZE)
         legend = []
 
-        for plot in quantization['plots']:
-            handle, = ax.plot(plot['xs'], plot['ys'], '.-')
+        for column in columns:
+            size = df.loc[:, COL_SIZE]
+            mean = df.loc[:, (column, 'mean')]
+            std = df.loc[:, (column, 'std')]
+            label = get_subset_label(column)
 
-            if 'std' in plot:
-                ax.fill_between(plot['xs'], plot['ys']-plot['std'], plot['ys']+plot['std'], alpha=0.2)
+            if tex := TEX_ALIASES.get(column):
+                label = f'${tex}$ {label}'
 
-            legend.append({'label': plot['label'], 'handle': handle, 'last_value': plot['ys'].iloc[-1]})
+            handle, = ax.plot(size, mean, '.-')
+            ax.fill_between(size, mean-std, mean+std, alpha=0.2)
+            legend.append({'label': label, 'handle': handle, 'last_value': mean.iloc[-1]})
+
+        legend.sort(key=lambda item: item['last_value'], reverse=True)
+
+        if with_legend:
+            ax.legend([item['handle'] for item in legend], [item['label'] for item in legend])
 
         ax.grid(True, linestyle='--', alpha=0.5)
-        ax.set_title(quantization['title'])
         ax.set_xlabel('dataset cardinality')
-        ax.set_ylabel(y_label + r' ($\mu\pm\sigma$)')
+        ax.set_ylabel(x_label + r' ($\mu\pm\sigma$)')
+        fig.savefig(subsets_dir / f'{file_name}.pdf', bbox_inches='tight')
+        plt.close(fig)
 
-    legend.sort(key=lambda item: item['last_value'], reverse=True)
-    fig.legend(
-        [item['handle'] for item in legend],
-        [item['label'] for item in legend],
-        loc="center left",
-        bbox_to_anchor=(0.99, 0.56),
-        frameon=False,
-    )
 
-    dir_path.mkdir(parents=True, exist_ok=True)
-    fig.savefig(dir_path / file_name, bbox_inches='tight')
+def plot_union_combined(experiment_path: Path, run_id: str, error_scaling: float, with_legend: bool):
+    results = appmax.experiment.load_batch_results(experiment_path, run_id)
+
+    target_dir = experiment_path / f'{run_id}_outputs' / 'union'
+    target_dir.mkdir(parents=True, exist_ok=True)
+
+    widths: list[float] = []
+    maxima_jagged: list[list[float]] = []
+    max_len = 0
+
+    for item in results:
+        progress = item['result_nearby']['union']['progress']
+        widths.append(item['result_nearby']['union']['width'])
+        maxima = []
+        last_n = 0
+        maximum = progress[0][1]
+
+        for n, fun in progress:
+            maximum = max(maximum, fun)
+
+            if n > last_n:
+                # new polytope found
+                maxima.append(maximum)
+
+            last_n = n
+
+        maxima_jagged.append(maxima)
+        max_len = max(max_len, len(maxima))
+
+    for maxima in maxima_jagged:
+        maxima.extend([maxima[-1]] * (max_len - len(maxima)))
+
+    maxima_unscaled = np.array(maxima_jagged) * error_scaling
+    means = np.mean(maxima_unscaled, axis=0)
+    weighted = np.average(maxima_unscaled, axis=0, weights=widths)
+    ns = range(1, len(means)+1)
+
+    fig, ax = plt.subplots(figsize=FIGSIZE)
+    ax.set_xlabel('number of subpolytopes')
+    ax.set_ylabel('average maximum errors')
+    offset = 1
+    ax.plot(ns[offset:], weighted[offset:], '.-', label=f'${TEX_ALIASES['union_weighted_sum']}$ weighted average')
+    ax.plot(ns[offset:], means[offset:], '.-', label=f'${TEX_ALIASES['union_mean']}$ arithmetic average')
+    ax.grid(True, linestyle='--', alpha=0.5)
+
+    if with_legend:
+        ax.legend()
+
+    fig.savefig(target_dir / f'combined.pdf', bbox_inches='tight')
     plt.close(fig)
 
 
 def show_input_faces(experiment_path: Path, run_id: str, error_scaling: float):
+    bundle = appmax.applications.DataBundle('utkface')
+    model = bundle.load_model()
+    samples_test = model.subset(bundle.data_split.test)
     results = appmax.experiment.load_batch_results(experiment_path, run_id)
 
     selected = [1849, 1096, 1222, 1397, 1779, 561,
@@ -460,7 +405,23 @@ def show_input_faces(experiment_path: Path, run_id: str, error_scaling: float):
         xs['union'] = item['result_nearby']['union']['x']
 
         for name, x in xs.items():
-            plt.imsave(target_dir / f'face_{i:04d}_{name}.png', x_to_img(x))
+            idx = selected[i]
+
+            # if name == 'original':
+            #     age = samples_test[idx][1].item()
+            # else:
+            #     age = 0
+
+            # age = bundle.data_split.metadata.scaler.inverse_transform(np.array([[age]])).item()
+
+            # img_np = (x_to_img(x).detach().cpu().numpy() * 255).astype(np.uint8)
+            # img_pil = PIL.Image.fromarray(img_np)
+            # draw = PIL.ImageDraw.Draw(img_pil)
+            # position = (0, 0)
+            # draw.text(position, f"{age:.1f}", fill="black", stroke_width=1, stroke_fill="white")
+            # img_pil.save(target_dir / f'face_{i:04d}_{name}.png')
+            plt.imsave(target_dir / f'face_{i:04d}_{name}_a.png', x_to_img(samples_test[idx][0]))
+            plt.imsave(target_dir / f'face_{i:04d}_{name}_b.png', x_to_img(x))
 
     df = pd.DataFrame(appmax.experiment.dict2flat(r) for r in results)
     df.loc[:, appmax.experiment.UNSCALED_COLS] *= error_scaling
@@ -505,55 +466,6 @@ def plot_histograms(experiment_path: Path, run_id: str):
         plt.close(fig)
 
 
-def plot_union_combined(experiment_path: Path, run_id: str, error_scaling: float):
-    results = appmax.experiment.load_batch_results(experiment_path, run_id)
-
-    target_dir = experiment_path / f'{run_id}_outputs' / 'union'
-    target_dir.mkdir(parents=True, exist_ok=True)
-
-    widths: list[float] = []
-    maxima_jagged: list[list[float]] = []
-    max_len = 0
-
-    for item in results:
-        progress = item['result_nearby']['union']['progress']
-        widths.append(item['result_nearby']['union']['width'])
-        maxima = []
-        last_n = 0
-        maximum = progress[0][1]
-
-        for n, fun in progress:
-            maximum = max(maximum, fun)
-
-            if n > last_n:
-                # new polytope found
-                maxima.append(maximum)
-
-            last_n = n
-
-        maxima_jagged.append(maxima)
-        max_len = max(max_len, len(maxima))
-
-    for maxima in maxima_jagged:
-        maxima.extend([maxima[-1]] * (max_len - len(maxima)))
-
-    maxima_unscaled = np.array(maxima_jagged) * error_scaling
-    means = np.mean(maxima_unscaled, axis=0)
-    weighted = np.average(maxima_unscaled, axis=0, weights=widths)
-    ns = range(1, len(means)+1)
-
-    fig, ax = plt.subplots(figsize=FIGSIZE)
-    ax.set_xlabel('number of subpolytopes')
-    ax.set_ylabel('average maximum errors')
-    offset = 1
-    ax.plot(ns[offset:], weighted[offset:], '.-', label=f'${TEX_ALIASES['union_weighted_sum']}$ weighted average')
-    ax.plot(ns[offset:], means[offset:], '.-', label=f'${TEX_ALIASES['union_mean']}$ arithmetic average')
-    ax.grid(True, linestyle='--', alpha=0.5)
-    ax.legend()
-    fig.savefig(target_dir / f'combined.pdf', bbox_inches='tight')
-    plt.close(fig)
-
-
 def check_len(experiment_path: Path, run_id: str, desired_len: int):
     results = appmax.experiment.load_batch_results(experiment_path, run_id)
 
@@ -561,160 +473,11 @@ def check_len(experiment_path: Path, run_id: str, desired_len: int):
         raise ValueError(f'run {experiment_path.name}/{run_id} does not contain {desired_len} items')
 
 
-# ---
-
-
-def print_points():
-    indices = sorted(rng.permutation(1000)[:20].tolist())
-    datasets = [
-        (EXPERIMENTS_DIR / 'california', appmax.applications.california_housing.CaliforniaHousingSplit().metadata.error_scaling),
-        (EXPERIMENTS_DIR / 'year', appmax.applications.year_prediction.YearPredictionSplit().metadata.error_scaling),
-    ]
-    runs = ('run', 'sym8', 'second', 'sym4')
-
-    with open(EXPERIMENTS_DIR / 'points.html', 'w') as f:
-        tables = [list_points(d, r, 1.0, indices) for d, _ in datasets for r in runs]
-        f.write(wrap_html_tables(tables, into_one=False))
-
-    with open(EXPERIMENTS_DIR / 'points_unscaled.html', 'w') as f:
-        tables = [list_points(d, r, s, indices) for d, s in datasets for r in runs]
-        f.write(wrap_html_tables(tables, into_one=False))
-
-
-def list_points(experiment_path: Path, run_id: str, error_scaling: float, indices: list[int], aliases: dict[str, str] = {}) -> str:
-    df_results = load_df_results(experiment_path, run_id)
-    df_results.loc[:, appmax.experiment.UNSCALED_COLS] *= error_scaling
-    weights = df_results.get('polytope_width')
-    assert weights is not None
-    weights_sum = weights.sum()
-
-    def row(item):
-        return {
-            'index': int(item['sample_index']),
-            'error_sample': item['error_sample'],
-            'error_nearby': item['error_nearby'],
-            'polytope_width': item['polytope_width'],
-            'weight': item['polytope_width'] / weights_sum,
-            'nearby_weighted': (item['polytope_width'] / weights_sum) * item['error_nearby'],
-            'integral_width': item['integral'],
-            'integral_divided': item['integral'] / weights_sum,
-        }
-
-    df = pd.DataFrame(row(df_results.loc[index]) for index in indices)
-    df = df.set_index('index')
-    df.index.name = None
-    hl_args = {'axis': 0, 'props': 'font-weight:bold'}
-    styled_df = df.style.highlight_min(**hl_args).highlight_max(**hl_args)  # type: ignore[arg-type]
-
-    run_name = aliases[run_id] if run_id in aliases else run_id
-    s_tex = r'\sum_{x\in T} \tilde d_n(\Xi_x)'
-    unscaled_text = '' if error_scaling == 1.0 else f'(unscaled = multiplied by {error_scaling:.6f} to get the original units)'
-    header = f'<p><b>{experiment_path.name}: {run_name}</b> {unscaled_text}</p><p>\\( S = {s_tex} = \\) {weights_sum:.6f}</p>'
-    return header + styled_df.to_html()
-
-
-def plot_tracked_widths(experiments: dict[str, str]):
-    experiment_paths = {e: Path(p) for e, p in experiments.items()}
-    data, grouped = {}, {}
-    types = ['polytope', 'integral']
-    first_k = 10
-
-    for e, p in experiment_paths.items():
-        data[e] = pd.read_csv(p / 'data.csv', index_col=0)
-        grouped[e] = data[e].groupby(['sample', 'type'])
-
-    def s(data):
-        return data[25:]
-
-    def plot_chart(category, name, identifiers):
-        for experiment, key, label in identifiers:
-            group_data = grouped[experiment].get_group(key)
-            plt.plot(s(group_data['directions']), s(group_data['width']), label=label)
-
-        line = {'c': 'black', 'ls': 'dotted'}
-        plt.axvline(50, **line)
-        plt.axvline(100, **line, lw=2)
-        plt.axvline(150, **line)
-        plt.axvline(200, **line)
-
-        if any(x[2] for x in identifiers):
-            plt.legend()
-
-        experiment_first = identifiers[0][0]
-        category_path = experiment_paths[experiment_first] / category
-        category_path.mkdir(parents=True, exist_ok=True)
-        plt.savefig(category_path / f'{name}.png')
-        plt.close()
-
-    def plot_charts(category, name, identifiers):
-        num = len(identifiers)
-
-        for ax, (experiment, key, label) in zip(axes, identifiers):
-            group_data = grouped[experiment].get_group(key)
-            ax.plot(s(group_data['directions']), s(group_data['width']), label=label)
-            line = {'c': 'black', 'ls': 'dotted'}
-            ax.axvline(50, **line)
-            ax.axvline(100, **line, lw=2)
-            ax.axvline(150, **line)
-            ax.axvline(200, **line)
-            ax.legend()
-
-        experiment_first = identifiers[0][0]
-        category_path = experiment_paths[experiment_first] / category
-        category_path.mkdir(parents=True, exist_ok=True)
-        plt.savefig(category_path / f'{name}.png')
-        plt.close()
-
-    # one chart per polytope
-    for experiment in experiments.keys():
-        for key in grouped[experiment].groups.keys():
-            sample, type_ = typing.cast(tuple[int, str], key)
-            plot_chart('single', f'{type_}_{sample+1:02d}', [(experiment, key, None)])
-
-    # polytope and integral in the same chart
-    for experiment in experiments.keys():
-        for sample in range(first_k):
-            plot_chart('both', f'{sample+1:02d}', [(experiment, (sample, t), t) for t in types])
-
-    # several polytopes in one chart
-    for experiment in experiments.keys():
-        for type_ in types:
-            plot_chart('combined', type_, [(experiment, (i, type_), None) for i in range(first_k)])
-
-    # several datasets in one chart
-    for type_ in types:
-        for sample in range(first_k):
-            plot_charts('different', f'{type_}_{sample+1:02d}', [(e, (sample, type_), e) for e in experiments.keys()])
-
-
-def plot_tracked_union(experiment_path: Path):
-    data = pd.read_csv(experiment_path / 'data.csv', index_col=0)
-    grouped = data.groupby('sample')
-
-    def plot_chart(category, sample):
-        group_data = grouped.get_group(sample)
-        fig, ax1 = plt.subplots()
-        ax2 = ax1.twinx()
-        ax1.plot(group_data['point'], group_data['fun'], '.', label='function value')
-        ax1.plot(group_data['point'], group_data['max'], label='maximum')
-        ax2.plot(group_data['point'], group_data['polytopes'], color='red', label='found polytopes')
-        ax2.set_ylim(0, 50)
-
-        line = {'c': 'black', 'ls': 'dotted'}
-        ax1.axvline(25, **line)
-        ax1.axvline(50, **line, lw=2)
-        ax1.axvline(75, **line)
-        ax1.axvline(100, **line)
-
-        category_path = experiment_path / category
-        category_path.mkdir(parents=True, exist_ok=True)
-        ax1.legend(loc='center left')
-        ax2.legend(loc='center right')
-        plt.savefig(category_path / f'{sample+1:02d}.png')
-        plt.close()
-
-    for sample in grouped.groups.keys():
-        plot_chart('single', sample)
+def print_palette():
+    for name, hex_val in list(matplotlib.colors.TABLEAU_COLORS.items()):
+        latex_name = name.replace('tab:', 'my')
+        rgb_str = ",".join(str(round(c*255)) for c in matplotlib.colors.to_rgb(hex_val))
+        print(f"\\definecolor{{{latex_name}}}{{RGB}}{{{rgb_str}}}")
 
 
 if __name__ == '__main__':
