@@ -6,11 +6,12 @@ python="${1:-uv run}"
 prefix="$python -m appmax.visualization"
 echo "passing commands to '$prefix'"
 
-california="california 8bit 6bit 4bit"
-year="year 8bit 6bit 4bit"
+california="california 8bit 6bit 4bit pruned"
+year="year 8bit 6bit 4bit pruned"
 utkface="utkface 12bit 8bit 6bit"
 
 for dataset_runs in "$california" "$year" "$utkface"; do
+    echo $dataset_runs
     $prefix check-2000 $dataset_runs
     $prefix comparison $dataset_runs
     $prefix cardinalities $dataset_runs #--plot-only
