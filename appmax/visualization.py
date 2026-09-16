@@ -181,7 +181,7 @@ def compare_results(experiment_path: Path, run_ids: list[str], error_scaling: fl
     def analyze(name: str, df_results: pd.DataFrame):
         df_results.loc[:, appmax.experiment.UNSCALED_COLS] *= error_scaling
         net_index = NETS.get(experiment_path.name, experiment_path.name[0])
-        bits = ''.join(char for char in name if char.isdigit())
+        bits = ''.join(char for char in name if char.isdigit()) or name[0]  # hack to extract bits from run_id
         return {
             'run': r' \( \boldsymbol{\widetilde{\mathcal{N}}_' + str(net_index) + '^{' + bits + '}} \\)',
             **extract_metrics(df_results),
