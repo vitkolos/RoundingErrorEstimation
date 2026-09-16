@@ -1,7 +1,8 @@
 import torch
+import torch.nn.utils.prune
 
 
-def lower_precision(net: torch.nn.Module, bits: int, qt: str = 'asymmetric') -> torch.nn.Module:
+def lower_precision(net: torch.nn.Module, bits: int = 16, qt: str = 'asymmetric') -> torch.nn.Module:
     """lowers the precision of the network in-place"""
     if qt == 'symmetric' or qt == 'asymmetric':
         parameters = torch.hstack([p.flatten() for p in net.parameters()])
@@ -14,7 +15,25 @@ def lower_precision(net: torch.nn.Module, bits: int, qt: str = 'asymmetric') -> 
     if bits == 16 and qt == 'torch':
         return net.half().to(dtype=torch.get_default_dtype())
 
+    if qt == 'prune':
+        return prune(net)
+
     raise NotImplementedError
+
+
+def prune(model: torch.nn.Module):
+    for module in model.modules():
+        if isinstance(module, (torch.nn.Conv2d, torch.nn.Linear)):
+            torch.nn.utils.prune.ln_structured(
+                module,
+                name='weight',
+                amount=0.1,
+                n=1,  # L1 norm is used
+                dim=0,
+            )
+            torch.nn.utils.prune.remove(module, 'weight')
+
+    return model
 
 
 class Quantizer:

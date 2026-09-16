@@ -25,7 +25,8 @@ def metrics_callback(ctx, param, value):
 @click.option('-s', '--solver', default=appmax.solving.SOLVER_DEFAULT, help='Best options: gurobi, gurobi-barrier, highs (default).')
 @click.option('-i', '--items', default='', help='Usage: 3 (sample 3), 5:8 (samples 5, 6, 7); all the samples if left empty.')
 @click.option('-j', '--jobs', default=1, help='Number of CPUs used (default: 1).')
-def main(experiment, dataset, run_id, metrics, bits, solver, items, jobs):
+@click.option('-r', '--reduction', default='asymmetric')
+def main(experiment, dataset, run_id, metrics, bits, solver, items, jobs, reduction):
     """
     AppMax \n
     input: evaluation network (original net. & approximated net. combined), data samples \n
@@ -39,7 +40,7 @@ def main(experiment, dataset, run_id, metrics, bits, solver, items, jobs):
 
     model = bundle.load_model()
     model_approx = bundle.load_model()
-    model_approx.round(bits=bits)
+    model_approx.round(bits=bits, qt=reduction)
 
     eval_net = appmax.evaluation.EvaluationNet(model, model_approx, data_split.metadata).eval()
 
