@@ -1,6 +1,7 @@
 import sys
 from dataclasses import dataclass, field
 from typing import Any
+import json
 
 import click
 import numpy as np
@@ -234,7 +235,8 @@ class TrainableModel(BaseModel):
         accurate_count = accurate_enough.sum()
         indices = torch.nonzero(accurate_enough, as_tuple=True)[0].tolist()
         removed_count = len(dataset)-accurate_count  # type: ignore[arg-type]
-        print(f'subset contains only {accurate_count} data points ({removed_count} removed, model was too inaccurate)', file=sys.stderr)
+        print(
+            f'subset contains only {accurate_count} data points ({removed_count} removed, model was too inaccurate)', file=sys.stderr)
         return torch.utils.data.Subset(dataset, indices)
 
 
@@ -243,6 +245,20 @@ def init_weights(module: nn.Module):
         nn.init.kaiming_uniform_(module.weight, nonlinearity='relu')
         if module.bias is not None:
             nn.init.constant_(module.bias, 0)
+
+
+def save_split_backup(dataset: str, idx_train, idx_dev, idx_test):
+    with open(f'datasets/split_{dataset}.json', 'w') as f:
+        json.dump({
+            'train': idx_train.tolist() if hasattr(idx_train, 'tolist') else idx_train,
+            'dev': idx_dev.tolist() if hasattr(idx_dev, 'tolist') else idx_dev,
+            'test': idx_test.tolist() if hasattr(idx_test, 'tolist') else idx_test,
+        }, f)
+
+
+def load_split_backup(dataset: str):
+    with open(f'datasets/split_{dataset}.json', 'r') as f:
+        return json.load(f)
 
 
 if __name__ == '__main__':

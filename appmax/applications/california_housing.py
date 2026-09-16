@@ -40,12 +40,16 @@ class CaliforniaHousingSplit(appmax.trainable.DataSplit):
     def __init__(self):
         data, target = sklearn.datasets.fetch_california_housing(data_home='datasets', return_X_y=True)
         data = np.column_stack((target, data))
-        data_train, data_test = sklearn.model_selection.train_test_split(data, test_size=1/8, random_state=42)
+        data_train, data_test, idx_train, idx_test = sklearn.model_selection.train_test_split(
+            data, np.arange(len(data)), test_size=1/8, random_state=42)
 
         self.metadata = appmax.trainable.Metadata()
         train_dev = CaliforniaHousingDataset(data_train, self.metadata)
         self.test = CaliforniaHousingDataset(data_test, self.metadata)
         self.train, self.dev = torch.utils.data.random_split(train_dev, [6/7, 1/7])
+
+        appmax.trainable.save_split_backup(
+            'california', idx_train[self.train.indices], idx_train[self.dev.indices], idx_test)
 
 
 class SimpleNet(appmax.trainable.TrainableModel):

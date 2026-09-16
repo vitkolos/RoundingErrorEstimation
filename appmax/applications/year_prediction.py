@@ -55,7 +55,10 @@ class YearPredictionSplit(appmax.trainable.DataSplit):
         test = YearPredictionDataset(self.metadata, train=False)
         self.train = torch.utils.data.Subset(train_dev, range(0, YearPredictionDataset.T_LEN))
         self.dev = torch.utils.data.Subset(train_dev, range(YearPredictionDataset.T_LEN, len(train_dev)))
-        self.test = torch.utils.data.Subset(test, torch.randperm(len(test)).tolist())  # shuffle the test set
+        idx_test = torch.randperm(len(test))  # shuffle the test set
+        self.test = torch.utils.data.Subset(test, idx_test.tolist())
+
+        appmax.trainable.save_split_backup('year', None, None, idx_test + YearPredictionDataset.TD_LEN)
 
 
 class YearNet(appmax.trainable.TrainableModel):
