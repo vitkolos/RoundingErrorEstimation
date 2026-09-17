@@ -427,12 +427,11 @@ def show_input_faces(experiment_path: Path, run_id: str, error_scaling: float):
             draw = PIL.ImageDraw.Draw(img_pil)
             kwargs = {'fill': "white", 'stroke_width': 4, 'stroke_fill': "black", 'font_size': FACE_SIZE/8}
 
-            draw.text((MARGIN, FACE_SIZE-MARGIN), str(round(age_model)), anchor='lb', **kwargs)
-
             if name == 'original':
                 draw.text((MARGIN, MARGIN), str(round(age_gold)), anchor='lt', **kwargs)
-            else:
-                draw.text((FACE_SIZE-MARGIN, FACE_SIZE-MARGIN), str(round(age_approx)), anchor='rb', **kwargs)
+
+            draw.text((MARGIN, FACE_SIZE-MARGIN), str(round(age_model)), anchor='lb', **kwargs)
+            draw.text((FACE_SIZE-MARGIN, FACE_SIZE-MARGIN), str(round(age_approx)), anchor='rb', **kwargs)
 
             img_pil.save(target_dir / f'face_{i:04d}_{name}.png')
 
