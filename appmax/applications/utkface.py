@@ -39,7 +39,7 @@ def load_utkface_from_images():
     or at least the utkface.pt file
     https://www.kaggle.com/datasets/jangedoo/utkface-new/data"""
 
-    files = glob.glob(f'{DATA_HOME}/UTKFace/*.jpg')
+    files = sorted(glob.glob(f'{DATA_HOME}/UTKFace/*.jpg'))
     images, targets, names = [], [], []
     image_transforms = torchvision.transforms.Compose([
         torchvision.transforms.Resize((IMG_SIZE, IMG_SIZE)),  # scale down to 100×100
