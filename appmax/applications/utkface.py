@@ -14,6 +14,7 @@ import appmax.logger
 
 DATA_HOME = 'datasets'
 DATASET_FILE = f'{DATA_HOME}/utkface.pt'
+NAMES_FILE = f'{DATA_HOME}/files_utkface.txt'
 IMG_CHANNELS = 3
 IMG_SIZE = 32  # original is 200
 
@@ -39,7 +40,7 @@ def load_utkface_from_images():
     https://www.kaggle.com/datasets/jangedoo/utkface-new/data"""
 
     files = glob.glob(f'{DATA_HOME}/UTKFace/*.jpg')
-    images, targets = [], []
+    images, targets, names = [], [], []
     image_transforms = torchvision.transforms.Compose([
         torchvision.transforms.Resize((IMG_SIZE, IMG_SIZE)),  # scale down to 100×100
         torchvision.transforms.PILToTensor(),  # convert to tensor (keeps its dtype)
@@ -47,6 +48,7 @@ def load_utkface_from_images():
 
     for file_path in appmax.logger.progress(files, desc='Preparing dataset'):
         filename = os.path.basename(file_path)
+        names.append(filename + '\n')
         parts = filename.split('_')
         age = float(parts[0])
         targets.append([age])
@@ -55,6 +57,10 @@ def load_utkface_from_images():
 
     data = torch.stack(images)
     target = torch.tensor(targets, dtype=torch.get_default_dtype())
+
+    with open(NAMES_FILE, 'w') as f:
+        f.writelines(names)
+
     return data, target
 
 

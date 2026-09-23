@@ -38,7 +38,7 @@ def intervals_wrapper(dataset, bits, verbose=True, bundle=None):
         model_approx.round(bits=16, qt='torch')
         model.layers, model_approx.layers = model.network, model_approx.network
     elif verbose:
-        print(f'{dataset}: {bits}bit')
+        print(f'\n{dataset} {bits}bit')
 
     return find_intervals(input_shape, bounds_ab, model.layers, model_approx.layers, verbose)
 
